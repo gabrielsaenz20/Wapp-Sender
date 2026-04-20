@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ contact_list.name }} – Wapp Sender{% endblock %}
+{% block page_title %}👥 {{ contact_list.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1">
+        <li class="breadcrumb-item"><a href="/contacts" class="text-decoration-none">👥 Listas</a></li>
+        <li class="breadcrumb-item active">{{ contact_list.name }}</li>
+      </ol>
+    </nav>
+    <h5 class="fw-bold mb-0">{{ contact_list.name }}</h5>
+    {% if contact_list.description %}
+    <small class="text-muted">{{ contact_list.description }}</small>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary" onclick="openImportModal()" style="border-radius:10px;">
+      📥 Importar Excel
+    </button>
+    <button class="btn btn-outline-wapp" data-bs-toggle="modal" data-bs-target="#addContactModal" style="border-radius:10px;">
+      ➕ Agregar Contacto
+    </button>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-auto">
+    <div class="card px-4 py-3 d-flex flex-row align-items-center gap-3" style="border-radius:12px;">
+      <span style="font-size:2rem;">👥</span>
+      <div>
+        <div class="fw-bold fs-4">{{ contacts|length }}</div>
+        <div class="text-muted small">Contactos</div>
+      </div>
+    </div>
+  </div>
+  {% if extra_columns %}
+  <div class="col-auto">
+    <div class="card px-4 py-3" style="border-radius:12px;">
+      <div class="text-muted small mb-1">Campos disponibles como placeholder</div>
+      <div class="d-flex gap-1 flex-wrap">
+        <span class="placeholder-chip">&#123;&#123;name&#125;&#125;</span>
+        <span class="placeholder-chip">&#123;&#123;phone&#125;&#125;</span>
+        {% for col in extra_columns %}
+        <span class="placeholder-chip">&#123;&#123;{{ col }}&#125;&#125;</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {% if contacts %}
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="px-4">#</th>
+            <th>👤 Nombre</th>
+            <th>📱 Teléfono</th>
+            {% for col in extra_columns %}
+            <th>{{ col }}</th>
+            {% endfor %}
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+          <tr>
+            <td class="px-4 text-muted small">{{ loop.index }}</td>
+            <td class="fw-semibold">{{ contact.name }}</td>
+            <td><code>{{ contact.phone }}</code></td>
+            {% for col in extra_columns %}
+            <td class="text-muted small">{{ contact.extra_data.get(col, '') if contact.extra_data else '' }}</td>
+            {% endfor %}
+            <td>
+              <form method="post" action="/contacts/{{ contact_list.id }}/contacts/{{ contact.id }}/delete" class="d-inline" onsubmit="return confirm('¿Eliminar este contacto?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger" style="border-radius:8px;">🗑️</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <div style="font-size:3rem;">📭</div>
+      <p class="mt-2">Esta lista está vacía.<br>
+        <button class="btn btn-sm btn-wapp mt-2" onclick="openImportModal()">📥 Importar desde Excel</button>
+        <button class="btn btn-sm btn-outline-wapp mt-2" data-bs-toggle="modal" data-bs-target="#addContactModal">➕ Agregar manualmente</button>
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Add contact modal -->
+<div class="modal fade" id="addContactModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">➕ Agregar Contacto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/contacts/{{ contact_list.id }}/contacts">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">👤 Nombre completo</label>
+            <input type="text" class="form-control" name="name" placeholder="Ej: Juan García" required style="border-radius:10px;" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📱 Teléfono (con código de país)</label>
+            <input type="text" class="form-control" name="phone" placeholder="Ej: 5219981234567" required style="border-radius:10px;" />
+            <div class="form-text">Incluye el código de país sin el + (ej: 52 para México)</div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius:10px;">Cancelar</button>
+          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">✅ Agregar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Import Excel Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">📥 Importar desde Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/contacts/{{ contact_list.id }}/import" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="alert alert-info d-flex gap-2 align-items-start" style="border-radius:10px; font-size:0.85rem;">
+            <span>📋</span>
+            <div>
+              Tu archivo Excel debe tener las columnas:<br>
+              <strong>name</strong> (o nombre) y <strong>phone</strong> (o telefono/celular).<br>
+              Cualquier otra columna estará disponible como <strong>placeholder</strong> en tus mensajes.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📎 Archivo Excel (.xlsx, .xls)</label>
+            <input type="file" class="form-control" name="file" accept=".xlsx,.xls" required style="border-radius:10px;" />
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="replace" id="replaceCheck2" value="1" />
+            <label class="form-check-label" for="replaceCheck2">
+              🔄 Reemplazar contactos existentes
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius:10px;">Cancelar</button>
+          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">📥 Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openImportModal() {
+  new bootstrap.Modal(document.getElementById('importModal')).show();
+}
+</script>
+{% endblock %}

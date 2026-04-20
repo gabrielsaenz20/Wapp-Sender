@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Nueva Campaña – Wapp Sender{% endblock %}
+{% block page_title %}✉️ Nueva Campaña{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb mb-1">
+      <li class="breadcrumb-item"><a href="/campaigns" class="text-decoration-none">📢 Campañas</a></li>
+      <li class="breadcrumb-item active">Nueva Campaña</li>
+    </ol>
+  </nav>
+  <h5 class="fw-bold mb-0">✉️ Crear Nueva Campaña</h5>
+  <small class="text-muted">Configura y envía mensajes personalizados masivamente</small>
+</div>
+
+<form method="post" action="/campaigns" id="campaignForm">
+  <div class="row g-4">
+    <!-- Left column: settings -->
+    <div class="col-lg-7">
+      <div class="card mb-3">
+        <div class="card-header py-3 px-4">📋 Información de la Campaña</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📌 Nombre de la campaña</label>
+            <input type="text" class="form-control" name="name" placeholder="Ej: Invitación Evento Navidad 2024" required style="border-radius:10px;" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header py-3 px-4">👥 Listas de Contactos</div>
+        <div class="card-body">
+          {% if contact_lists %}
+          <p class="text-muted small mb-3">Selecciona una o más listas de contactos para esta campaña:</p>
+          <div class="row g-2">
+            {% for cl in contact_lists %}
+            <div class="col-md-6">
+              <label class="d-flex align-items-center gap-2 p-3 border rounded-3 cursor-pointer list-check-item" style="cursor:pointer; transition:all .15s;">
+                <input type="checkbox" class="form-check-input list-checkbox mt-0" name="list_ids" value="{{ cl.id }}" style="width:18px;height:18px;" />
+                <div>
+                  <div class="fw-semibold small">{{ cl.name }}</div>
+                  <div class="text-muted" style="font-size:0.75rem;">{{ cl.contacts|length }} contacto{{ 's' if cl.contacts|length != 1 }}</div>
+                </div>
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center py-3 text-muted">
+            <p>No tienes listas de contactos.<br>
+            <a href="/contacts" class="btn btn-sm btn-wapp mt-2">👥 Crear lista primero</a></p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header py-3 px-4">
+          <div class="d-flex align-items-center justify-content-between">
+            <span>✍️ Mensaje</span>
+            <small class="text-muted fw-normal">Usa placeholders para personalizar</small>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Placeholder chips -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small text-muted text-uppercase" style="letter-spacing:.5px;">Variables disponibles</label>
+            <div class="d-flex flex-wrap gap-2" id="placeholderChips">
+              <span class="placeholder-chip" data-ph="name" onclick="insertFromChip(this)">&#123;&#123;name&#125;&#125; 👤</span>
+              <span class="placeholder-chip" data-ph="phone" onclick="insertFromChip(this)">&#123;&#123;phone&#125;&#125; 📱</span>
+              {% for col in available_columns %}
+              <span class="placeholder-chip" data-ph="{{ col }}" onclick="insertFromChip(this)">&#123;&#123;{{ col }}&#125;&#125;</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <label class="form-label fw-semibold">💬 Texto del mensaje</label>
+            <textarea
+              class="form-control"
+              name="message_template"
+              id="messageTemplate"
+              rows="8"
+              placeholder="Ej: ¡Hola &#123;&#123;name&#125;&#125;! 🎉&#10;&#10;Te invitamos a nuestro evento especial este viernes.&#10;&#10;¡Esperamos verte! 🙌"
+              required
+              style="border-radius:10px; font-size:0.95rem; line-height:1.6;"
+            ></textarea>
+            <div class="d-flex justify-content-between mt-1">
+              <div class="form-text">Haz clic en las variables de arriba para insertarlas.</div>
+              <div class="form-text" id="charCount">0 caracteres</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right column: preview -->
+    <div class="col-lg-5">
+      <div class="card" style="position:sticky; top:1.5rem;">
+        <div class="card-header py-3 px-4">👁️ Vista Previa</div>
+        <div class="card-body">
+          <!-- Phone mockup -->
+          <div style="background:#e5ddd5; border-radius:12px; padding:1.5rem 1rem; min-height:250px;">
+            <div style="display:flex; flex-direction:column; gap:0.5rem;">
+              <div style="align-self:flex-end; max-width:85%;">
+                <div class="message-preview" id="messagePreview">
+                  <span class="text-muted" style="font-style:italic;">El mensaje aparecerá aquí...</span>
+                </div>
+                <div class="text-end mt-1">
+                  <small class="text-muted" style="font-size:0.7rem;">
+                    12:00 ✓✓
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <hr />
+
+          <!-- Selected contacts summary -->
+          <div id="selectedSummary" class="text-muted text-center small">
+            <p class="mb-0">👆 Selecciona listas para ver el total</p>
+          </div>
+
+          <div class="d-grid gap-2 mt-3">
+            <button type="submit" name="action" value="save_draft" class="btn btn-outline-secondary" style="border-radius:10px;">
+              📝 Guardar Borrador
+            </button>
+            <button type="submit" name="action" value="send" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendBtn">
+              🚀 Enviar Ahora
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Contact counts per list
+const listCounts = {
+  {% for cl in contact_lists %}
+  {{ cl.id }}: {{ cl.contacts|length }},
+  {% endfor %}
+};
+
+// Update preview
+const msgInput = document.getElementById('messageTemplate');
+const preview = document.getElementById('messagePreview');
+const charCount = document.getElementById('charCount');
+
+function updatePreview() {
+  const text = msgInput.value;
+  charCount.textContent = text.length + ' caracteres';
+  if (text.trim()) {
+    // Replace placeholders with sample values for preview
+    let sample = text
+      .replace(/\{\{name\}\}/g, '<strong>Juan García</strong>')
+      .replace(/\{\{phone\}\}/g, '5219981234567');
+    // Replace other placeholders
+    sample = sample.replace(/\{\{(\w+)\}\}/g, '<em>[$1]</em>');
+    // Convert newlines
+    sample = sample.replace(/\n/g, '<br>');
+    preview.innerHTML = sample;
+  } else {
+    preview.innerHTML = '<span class="text-muted" style="font-style:italic;">El mensaje aparecerá aquí...</span>';
+  }
+}
+
+msgInput.addEventListener('input', updatePreview);
+
+// Insert placeholder at cursor
+function insertPlaceholder(placeholder) {
+  const start = msgInput.selectionStart;
+  const end = msgInput.selectionEnd;
+  const text = msgInput.value;
+  msgInput.value = text.substring(0, start) + placeholder + text.substring(end);
+  msgInput.selectionStart = msgInput.selectionEnd = start + placeholder.length;
+  msgInput.focus();
+  updatePreview();
+}
+
+// Helper to insert placeholder from chip (builds {{col}} safely in JS)
+function insertFromChip(el) {
+  var open = '{' + '{';
+  var close = '}' + '}';
+  insertPlaceholder(open + el.dataset.ph + close);
+}
+
+// Update selected contacts count
+const checkboxes = document.querySelectorAll('.list-checkbox');
+const summary = document.getElementById('selectedSummary');
+
+function updateSummary() {
+  let total = 0;
+  checkboxes.forEach(cb => {
+    if (cb.checked) total += (listCounts[cb.value] || 0);
+  });
+  if (total > 0) {
+    summary.innerHTML = `<span class="fw-bold text-success" style="font-size:1.1rem;">👥 ${total}</span> contacto${total !== 1 ? 's' : ''} seleccionados`;
+  } else {
+    summary.innerHTML = '<p class="mb-0">👆 Selecciona listas para ver el total</p>';
+  }
+}
+
+checkboxes.forEach(cb => {
+  cb.addEventListener('change', updateSummary);
+  // Style parent label on check
+  cb.addEventListener('change', function() {
+    const label = this.closest('.list-check-item');
+    if (this.checked) {
+      label.style.borderColor = 'var(--wapp-green)';
+      label.style.background = '#f0fff4';
+    } else {
+      label.style.borderColor = '';
+      label.style.background = '';
+    }
+  });
+});
+
+// Send button loading state
+document.getElementById('campaignForm').addEventListener('submit', function(e) {
+  const sendBtn = document.getElementById('sendBtn');
+  if (e.submitter && e.submitter.value === 'send') {
+    sendBtn.disabled = true;
+    sendBtn.textContent = '⏳ Enviando...';
+  }
+});
+</script>
+{% endblock %}

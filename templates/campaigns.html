@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Campañas – Wapp Sender{% endblock %}
+{% block page_title %}📢 Campañas{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h5 class="fw-bold mb-0">📢 Mis Campañas</h5>
+    <small class="text-muted">Historial de envíos masivos de WhatsApp</small>
+  </div>
+  <a href="/campaigns/new" class="btn btn-wapp" style="border-radius:10px;">
+    ✉️ Nueva Campaña
+  </a>
+</div>
+
+{% if campaigns %}
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th class="px-4">📌 Nombre</th>
+            <th>Estado</th>
+            <th>Contactos</th>
+            <th>Enviados</th>
+            <th>Fallidos</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in campaigns %}
+          <tr>
+            <td class="px-4 fw-semibold">{{ c.name }}</td>
+            <td>
+              <span class="badge badge-{{ c.status }} text-white">
+                {% if c.status == 'draft' %}📝 Borrador
+                {% elif c.status == 'sending' %}⏳ Enviando
+                {% elif c.status == 'completed' %}✅ Completada
+                {% elif c.status == 'failed' %}❌ Error
+                {% else %}{{ c.status }}{% endif %}
+              </span>
+            </td>
+            <td class="text-muted">{{ c.total_contacts }}</td>
+            <td><span class="text-success fw-semibold">{{ c.sent_count }}</span></td>
+            <td><span class="text-danger">{{ c.failed_count }}</span></td>
+            <td class="text-muted small">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>
+              <a href="/campaigns/{{ c.id }}" class="btn btn-sm btn-outline-secondary me-1" style="border-radius:8px;">👁️ Ver</a>
+              {% if c.status == 'draft' %}
+              <form method="post" action="/campaigns/{{ c.id }}/delete" class="d-inline" onsubmit="return confirm('¿Eliminar esta campaña?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger" style="border-radius:8px;">🗑️</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card" style="border-radius:16px;">
+  <div class="card-body text-center py-5">
+    <div style="font-size:4rem; margin-bottom:1rem;">📭</div>
+    <h5 class="fw-bold">Aún no tienes campañas</h5>
+    <p class="text-muted">Crea tu primera campaña para enviar mensajes masivos.</p>
+    <a href="/campaigns/new" class="btn btn-wapp px-4" style="border-radius:10px;">
+      ✉️ Crear Primera Campaña
+    </a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

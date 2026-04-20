@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} – Wapp Sender{% endblock %}
+{% block page_title %}📢 {{ campaign.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb mb-1">
+        <li class="breadcrumb-item"><a href="/campaigns" class="text-decoration-none">📢 Campañas</a></li>
+        <li class="breadcrumb-item active">{{ campaign.name }}</li>
+      </ol>
+    </nav>
+    <div class="d-flex align-items-center gap-2">
+      <h5 class="fw-bold mb-0">{{ campaign.name }}</h5>
+      <span class="badge badge-{{ campaign.status }} text-white">
+        {% if campaign.status == 'draft' %}📝 Borrador
+        {% elif campaign.status == 'sending' %}⏳ Enviando
+        {% elif campaign.status == 'completed' %}✅ Completada
+        {% elif campaign.status == 'failed' %}❌ Error
+        {% else %}{{ campaign.status }}{% endif %}
+      </span>
+    </div>
+  </div>
+  {% if campaign.status == 'draft' %}
+  <form method="post" action="/campaigns/{{ campaign.id }}/send" id="sendForm">
+    <button type="submit" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendNowBtn">
+      🚀 Enviar Ahora
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <!-- Progress + stats -->
+  <div class="col-lg-8">
+    <!-- Progress card -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="row g-3 text-center mb-3">
+          <div class="col-4">
+            <div class="fw-bold fs-4 text-primary">{{ campaign.total_contacts }}</div>
+            <div class="text-muted small">📋 Total</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-4 text-success">{{ campaign.sent_count }}</div>
+            <div class="text-muted small">✅ Enviados</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-4 text-danger">{{ campaign.failed_count }}</div>
+            <div class="text-muted small">❌ Fallidos</div>
+          </div>
+        </div>
+        {% if campaign.total_contacts > 0 %}
+        <div class="progress" style="height:12px; border-radius:10px;">
+          {% set pct = (campaign.sent_count / campaign.total_contacts * 100) | int %}
+          <div class="progress-bar progress-bar-wapp" role="progressbar" style="width:{{ pct }}%;" aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        <div class="text-end mt-1">
+          <small class="text-muted">{{ pct }}% completado</small>
+        </div>
+        {% endif %}
+        {% if campaign.status == 'sending' %}
+        <div class="alert alert-warning d-flex align-items-center gap-2 mt-3 mb-0" style="border-radius:10px;">
+          <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+          <span>Campaña en proceso de envío... Esta página se actualizará automáticamente.</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Message log table -->
+    <div class="card">
+      <div class="card-header py-3 px-4 d-flex justify-content-between align-items-center">
+        <span>📋 Registro de Mensajes</span>
+        {% if logs %}
+        <small class="text-muted">{{ logs|length }} registros</small>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if logs %}
+        <div class="table-responsive" style="max-height:450px; overflow-y:auto;">
+          <table class="table table-sm table-hover mb-0">
+            <thead style="position:sticky; top:0; background:#fff; z-index:1;">
+              <tr>
+                <th class="px-3">👤 Contacto</th>
+                <th>📱 Teléfono</th>
+                <th>Estado</th>
+                <th>Hora</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in logs %}
+              <tr>
+                <td class="px-3 fw-semibold small">{{ log.contact_name }}</td>
+                <td class="small"><code>{{ log.phone }}</code></td>
+                <td>
+                  {% if log.status == 'sent' %}
+                  <span class="badge bg-success">✅ Enviado</span>
+                  {% elif log.status == 'failed' %}
+                  <span class="badge bg-danger" title="{{ log.error_message or '' }}">❌ Error</span>
+                  {% elif log.status == 'pending' %}
+                  <span class="badge bg-secondary">⏳ Pendiente</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{{ log.status }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-muted small">
+                  {% if log.sent_at %}{{ log.sent_at.strftime('%H:%M:%S') }}{% else %}–{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">
+          <p>📭 Aún no hay registros para esta campaña.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: details -->
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header py-3 px-4">📄 Detalles</div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5 text-muted small">Creada</dt>
+          <dd class="col-7 small">{{ campaign.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          {% if campaign.sent_at %}
+          <dt class="col-5 text-muted small">Enviada</dt>
+          <dd class="col-7 small">{{ campaign.sent_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          {% endif %}
+          <dt class="col-5 text-muted small">Listas</dt>
+          <dd class="col-7 small">
+            {% for cl in campaign.lists %}
+            <span class="badge bg-light text-dark border">👥 {{ cl.contact_list.name }}</span>
+            {% endfor %}
+          </dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header py-3 px-4">💬 Plantilla del Mensaje</div>
+      <div class="card-body">
+        <div class="message-preview" style="font-size:0.85rem; max-width:100%;">{{ campaign.message_template }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+{% if campaign.status == 'sending' %}
+// Auto-refresh every 5 seconds while sending
+setTimeout(function() {
+  location.reload();
+}, 5000);
+{% endif %}
+
+const sendForm = document.getElementById('sendForm');
+if (sendForm) {
+  sendForm.addEventListener('submit', function() {
+    const btn = document.getElementById('sendNowBtn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Iniciando envío...';
+  });
+}
+</script>
+{% endblock %}

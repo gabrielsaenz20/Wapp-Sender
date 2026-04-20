@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Configuración WhatsApp – Wapp Sender{% endblock %}
+{% block page_title %}⚙️ Configuración de WhatsApp{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h5 class="fw-bold mb-0">⚙️ Configuración de WhatsApp / WAHA</h5>
+  <small class="text-muted">Conecta y gestiona tu sesión de WhatsApp a través de WAHA</small>
+</div>
+
+<div class="row g-4">
+  <!-- Left: WAHA settings form -->
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header py-3 px-4">🔧 Configuración de WAHA</div>
+      <div class="card-body">
+        <form method="post" action="/settings/waha">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">🌐 URL del servidor WAHA</label>
+            <input
+              type="url"
+              class="form-control"
+              name="base_url"
+              value="{{ settings.base_url if settings else 'http://localhost:3000' }}"
+              placeholder="http://localhost:3000"
+              required
+              style="border-radius:10px;"
+            />
+            <div class="form-text">URL donde está corriendo tu servidor WAHA.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">🔑 API Key (opcional)</label>
+            <input
+              type="text"
+              class="form-control"
+              name="api_key"
+              value="{{ settings.api_key or '' if settings else '' }}"
+              placeholder="Tu API key de WAHA (si está configurada)"
+              style="border-radius:10px;"
+            />
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📛 Nombre de sesión</label>
+            <input
+              type="text"
+              class="form-control"
+              name="session_name"
+              value="{{ settings.session_name if settings else 'default' }}"
+              placeholder="default"
+              required
+              style="border-radius:10px;"
+            />
+            <div class="form-text">Nombre de la sesión en WAHA (por defecto: <code>default</code>).</div>
+          </div>
+          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">
+            💾 Guardar Configuración
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Session management -->
+    {% if settings %}
+    <div class="card">
+      <div class="card-header py-3 px-4">📱 Gestión de Sesión</div>
+      <div class="card-body">
+        <div class="d-flex gap-2 flex-wrap">
+          <form method="post" action="/settings/session/start">
+            <button type="submit" class="btn btn-wapp" style="border-radius:10px;">
+              ▶️ Iniciar Sesión
+            </button>
+          </form>
+          <form method="post" action="/settings/session/stop" onsubmit="return confirm('¿Cerrar la sesión de WhatsApp?')">
+            <button type="submit" class="btn btn-outline-danger" style="border-radius:10px;">
+              ⏹️ Detener Sesión
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: Connection status + QR -->
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header py-3 px-4 d-flex justify-content-between align-items-center">
+        <span>📡 Estado de Conexión</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshStatus()" id="refreshBtn" style="border-radius:8px;">
+          🔄 Actualizar
+        </button>
+      </div>
+      <div class="card-body" id="statusArea">
+        {% if wa_status %}
+          {% if wa_status.status == 'WORKING' %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="status-dot connected"></span>
+            <span class="fw-bold text-success fs-5">✅ Conectado</span>
+          </div>
+          {% if wa_status.me %}
+          <div class="d-flex align-items-center gap-3 p-3 rounded-3" style="background:#f0fff4; border:1px solid #c3e6cb;">
+            <div style="font-size:2.5rem;">👤</div>
+            <div>
+              <div class="fw-bold">{{ wa_status.me.get('pushName', 'N/A') }}</div>
+              <div class="text-muted small">+{{ wa_status.me.get('id', {}).get('user', 'N/A') }}</div>
+            </div>
+          </div>
+          {% endif %}
+          <div class="alert alert-success mt-3 mb-0 d-flex align-items-center gap-2" style="border-radius:10px;">
+            <span>🎉</span> Tu WhatsApp está conectado y listo para enviar mensajes.
+          </div>
+
+          {% elif wa_status.status == 'SCAN_QR_CODE' %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="status-dot connecting"></span>
+            <span class="fw-bold text-warning fs-5">📷 Escanea el QR</span>
+          </div>
+          <p class="text-muted small">Abre WhatsApp en tu teléfono → Menú → Dispositivos vinculados → Vincular dispositivo</p>
+          <div class="qr-container" id="qrContainer">
+            {% if qr_image %}
+            <img src="{{ qr_image }}" alt="QR Code WhatsApp" id="qrImg" />
+            <p class="text-muted small mt-3 text-center">⏳ QR válido por ~60 segundos. Se actualizará automáticamente.</p>
+            {% else %}
+            <p class="text-muted">No se pudo cargar el QR. Haz clic en "Actualizar".</p>
+            {% endif %}
+          </div>
+
+          {% elif wa_status.status == 'STARTING' %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+            <span class="fw-bold text-warning">Iniciando...</span>
+          </div>
+          <p class="text-muted small">WAHA está iniciando la sesión. Por favor espera unos segundos.</p>
+
+          {% elif wa_status.status == 'STOPPED' %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="status-dot disconnected"></span>
+            <span class="fw-bold text-secondary">Sesión detenida</span>
+          </div>
+          <p class="text-muted small">La sesión está detenida. Haz clic en "Iniciar Sesión" para comenzar.</p>
+
+          {% else %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="status-dot disconnected"></span>
+            <span class="fw-bold text-danger">{{ wa_status.status }}</span>
+          </div>
+          {% endif %}
+
+        {% elif wa_error %}
+        <div class="alert alert-danger d-flex gap-2" style="border-radius:10px;">
+          <span>⚠️</span>
+          <div>
+            <strong>Error al conectar con WAHA:</strong><br>
+            <small>{{ wa_error }}</small>
+          </div>
+        </div>
+        <p class="text-muted small">Verifica que la URL de WAHA sea correcta y que el servidor esté activo.</p>
+
+        {% else %}
+        <div class="text-muted text-center py-3">
+          <div style="font-size:2.5rem;">🔌</div>
+          <p class="mt-2">Guarda la configuración de WAHA para ver el estado de la conexión.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Help card -->
+    <div class="card">
+      <div class="card-header py-3 px-4">❓ ¿Qué es WAHA?</div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">
+          <strong>WAHA</strong> (WhatsApp HTTP API) es un servidor que te permite controlar WhatsApp
+          a través de una API REST. Necesitas tenerlo instalado en tu servidor.
+        </p>
+        <ul class="text-muted small mb-2">
+          <li>🐳 Se instala con Docker en tu servidor Linux</li>
+          <li>🔌 Por defecto corre en el puerto <code>3000</code></li>
+          <li>📱 Necesitas escanear el QR una vez para vincular tu WhatsApp</li>
+        </ul>
+        <a href="https://waha.devlike.pro/" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">
+          📖 Ver documentación de WAHA
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+{% if wa_status and wa_status.status == 'SCAN_QR_CODE' %}
+// Auto-refresh QR every 30 seconds
+let qrRefreshTimer = setInterval(refreshStatus, 30000);
+{% elif wa_status and wa_status.status == 'STARTING' %}
+// Auto-refresh status while starting
+let startingTimer = setInterval(refreshStatus, 5000);
+{% endif %}
+
+function refreshStatus() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Actualizando...';
+  }
+  location.reload();
+}
+</script>
+{% endblock %}

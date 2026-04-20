@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Wapp Sender 📨{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📨</text></svg>" />
+  <!-- Bootstrap 5.3 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+  <style>
+    :root {
+      --wapp-green: #25D366;
+      --wapp-dark: #128C7E;
+      --wapp-darker: #075E54;
+      --wapp-light: #DCF8C6;
+      --sidebar-width: 260px;
+    }
+
+    body {
+      background-color: #f0f2f5;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      min-height: 100vh;
+      background: linear-gradient(180deg, var(--wapp-darker) 0%, var(--wapp-dark) 100%);
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 100;
+      box-shadow: 2px 0 15px rgba(0,0,0,0.2);
+      transition: transform .3s ease;
+    }
+
+    .sidebar-brand {
+      padding: 1.5rem 1.25rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .sidebar-brand .brand-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .sidebar-brand .brand-sub {
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .sidebar-nav {
+      padding: 1rem 0;
+    }
+
+    .sidebar-nav .nav-item a {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.72rem 1.25rem;
+      color: rgba(255,255,255,0.8);
+      text-decoration: none;
+      font-size: 0.92rem;
+      border-radius: 0 30px 30px 0;
+      margin-right: 0.75rem;
+      transition: all 0.2s;
+    }
+
+    .sidebar-nav .nav-item a:hover,
+    .sidebar-nav .nav-item a.active {
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+
+    .sidebar-nav .nav-item a .nav-icon {
+      font-size: 1.1rem;
+      width: 22px;
+      text-align: center;
+    }
+
+    .sidebar-section-title {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.4);
+      padding: 0.5rem 1.25rem 0.25rem;
+      margin-top: 0.5rem;
+    }
+
+    /* Main content */
+    .main-content {
+      margin-left: var(--sidebar-width);
+      min-height: 100vh;
+    }
+
+    .top-navbar {
+      background: #fff;
+      border-bottom: 1px solid #e9ecef;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .page-body {
+      padding: 1.75rem;
+    }
+
+    /* Cards */
+    .card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+
+    .card-header {
+      background: transparent;
+      border-bottom: 1px solid #f0f2f5;
+      font-weight: 600;
+    }
+
+    /* Stats card */
+    .stat-card {
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      color: #fff;
+      border: none;
+    }
+
+    .stat-card .stat-icon {
+      font-size: 2.5rem;
+      opacity: 0.8;
+    }
+
+    .stat-card .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-card .stat-label {
+      font-size: 0.82rem;
+      opacity: 0.85;
+      margin-top: 0.25rem;
+    }
+
+    /* Buttons */
+    .btn-wapp {
+      background-color: var(--wapp-green);
+      color: #fff;
+      border: none;
+    }
+
+    .btn-wapp:hover {
+      background-color: var(--wapp-dark);
+      color: #fff;
+    }
+
+    .btn-outline-wapp {
+      border-color: var(--wapp-green);
+      color: var(--wapp-green);
+    }
+
+    .btn-outline-wapp:hover {
+      background-color: var(--wapp-green);
+      color: #fff;
+    }
+
+    /* Badge status */
+    .badge-draft { background-color: #6c757d; }
+    .badge-sending { background-color: #fd7e14; }
+    .badge-completed { background-color: #198754; }
+    .badge-failed { background-color: #dc3545; }
+
+    /* Table */
+    .table th {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6c757d;
+      font-weight: 600;
+      border-bottom: 2px solid #f0f2f5;
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 9999;
+    }
+
+    /* QR container */
+    .qr-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem;
+    }
+
+    .qr-container img {
+      max-width: 260px;
+      border-radius: 12px;
+      border: 4px solid var(--wapp-green);
+      padding: 8px;
+      background: #fff;
+    }
+
+    /* Message template preview */
+    .message-preview {
+      background: var(--wapp-light);
+      border-radius: 0 12px 12px 12px;
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-width: 400px;
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      .sidebar.show {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+      }
+    }
+
+    /* Progress bar color */
+    .progress-bar-wapp {
+      background-color: var(--wapp-green);
+    }
+
+    /* Connection status badge */
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    .status-dot.connected { background-color: var(--wapp-green); }
+    .status-dot.disconnected { background-color: #dc3545; }
+    .status-dot.connecting { background-color: #ffc107; }
+
+    /* Placeholder chip */
+    .placeholder-chip {
+      display: inline-block;
+      background: #e8f5e9;
+      border: 1px solid var(--wapp-green);
+      color: var(--wapp-dark);
+      font-size: 0.78rem;
+      padding: 2px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: all .15s;
+    }
+    .placeholder-chip:hover {
+      background: var(--wapp-green);
+      color: #fff;
+    }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% if current_user %}
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="d-flex align-items-center gap-2">
+      <span style="font-size:1.8rem;">💬</span>
+      <div>
+        <div class="brand-title">Wapp Sender</div>
+        <div class="brand-sub">WhatsApp Broadcast</div>
+      </div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-item">
+      <a href="/dashboard" class="{{ 'active' if active_page == 'dashboard' }}">
+        <span class="nav-icon">🏠</span> Inicio
+      </a>
+    </div>
+    <div class="sidebar-section-title">Contactos</div>
+    <div class="nav-item">
+      <a href="/contacts" class="{{ 'active' if active_page == 'contacts' }}">
+        <span class="nav-icon">👥</span> Listas de Contactos
+      </a>
+    </div>
+    <div class="sidebar-section-title">Campañas</div>
+    <div class="nav-item">
+      <a href="/campaigns" class="{{ 'active' if active_page == 'campaigns' }}">
+        <span class="nav-icon">📢</span> Mis Campañas
+      </a>
+    </div>
+    <div class="nav-item">
+      <a href="/campaigns/new" class="{{ 'active' if active_page == 'new_campaign' }}">
+        <span class="nav-icon">✉️</span> Nueva Campaña
+      </a>
+    </div>
+    <div class="sidebar-section-title">Configuración</div>
+    <div class="nav-item">
+      <a href="/settings" class="{{ 'active' if active_page == 'settings' }}">
+        <span class="nav-icon">⚙️</span> WhatsApp / WAHA
+      </a>
+    </div>
+    <div class="nav-item">
+      <a href="/logout">
+        <span class="nav-icon">🚪</span> Cerrar Sesión
+      </a>
+    </div>
+  </nav>
+</aside>
+
+<!-- Main content -->
+<div class="main-content">
+  <div class="top-navbar">
+    <div class="d-flex align-items-center gap-3">
+      <button class="btn btn-sm d-md-none" onclick="document.getElementById('sidebar').classList.toggle('show')">
+        <i class="bi bi-list fs-5"></i>
+      </button>
+      <h6 class="mb-0 fw-semibold text-muted">{% block page_title %}{% endblock %}</h6>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-muted small">👤 {{ current_user.username }}</span>
+    </div>
+  </div>
+  <div class="page-body">
+    <!-- Flash messages -->
+    {% if flash_success %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      ✅ {{ flash_success }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+    {% if flash_error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      ❌ {{ flash_error }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+    {% if flash_info %}
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+      ℹ️ {{ flash_info }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% else %}
+{% block auth_content %}{% endblock %}
+{% endif %}
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

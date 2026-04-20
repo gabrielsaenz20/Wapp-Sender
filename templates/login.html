@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión – Wapp Sender{% endblock %}
+
+{% block auth_content %}
+<div style="min-height:100vh; background: linear-gradient(135deg, #075E54 0%, #128C7E 50%, #25D366 100%); display:flex; align-items:center; justify-content:center; padding:1rem;">
+  <div class="card" style="width:100%; max-width:420px; border-radius:20px; overflow:hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #075E54, #128C7E); padding:2.5rem 2rem 2rem; text-align:center; color:#fff;">
+      <div style="font-size:4rem; margin-bottom:0.5rem;">💬</div>
+      <h1 style="font-size:1.6rem; font-weight:700; margin:0;">Wapp Sender</h1>
+      <p style="font-size:0.85rem; opacity:0.8; margin:0.25rem 0 0;">Sistema de envío masivo de WhatsApp</p>
+    </div>
+    <!-- Form -->
+    <div class="card-body p-4">
+      {% if error %}
+      <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+        <span>⚠️</span> {{ error }}
+      </div>
+      {% endif %}
+      <form method="post" action="/login">
+        <div class="mb-3">
+          <label for="username" class="form-label fw-semibold">👤 Usuario</label>
+          <input
+            type="text"
+            class="form-control form-control-lg"
+            id="username"
+            name="username"
+            placeholder="Ingresa tu usuario"
+            required
+            autocomplete="username"
+            style="border-radius:10px;"
+          />
+        </div>
+        <div class="mb-4">
+          <label for="password" class="form-label fw-semibold">🔒 Contraseña</label>
+          <input
+            type="password"
+            class="form-control form-control-lg"
+            id="password"
+            name="password"
+            placeholder="Ingresa tu contraseña"
+            required
+            autocomplete="current-password"
+            style="border-radius:10px;"
+          />
+        </div>
+        <button
+          type="submit"
+          class="btn btn-wapp btn-lg w-100"
+          style="border-radius:10px; font-weight:600; font-size:1.05rem;"
+        >
+          🚀 Iniciar Sesión
+        </button>
+      </form>
+      <div class="text-center mt-3">
+        <small class="text-muted">🔐 Acceso seguro protegido</small>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

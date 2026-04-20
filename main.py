@@ -28,6 +28,10 @@ from waha_client import WAHAClient
 
 load_dotenv()
 
+# Delay in seconds between messages to respect WAHA / WhatsApp rate limits.
+# Increase if messages fail due to rate limiting. WAHA recommends at least 1s.
+MESSAGE_SEND_DELAY = float(os.getenv("MESSAGE_SEND_DELAY", "1.0"))
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
@@ -86,16 +90,21 @@ def _flash(request: Request) -> dict:
     return flash
 
 
+import re
+
+_SAFE_REDIRECT_RE = re.compile(r"^/[a-zA-Z0-9_\-/]*$")
 _ALLOWED_FLASH_KEYS = frozenset(("flash_success", "flash_error", "flash_info"))
 
 
 def _redirect_with_flash(url: str, key: str, message: str) -> RedirectResponse:
-    # Ensure url is an internal path (no open redirect)
-    if not url.startswith("/") or "://" in url:
+    # Ensure url is an internal path only – prevents open redirect attacks.
+    # Only allows paths made of alphanumerics, slashes, hyphens, and underscores.
+    if not _SAFE_REDIRECT_RE.match(url):
         url = "/"
     if key not in _ALLOWED_FLASH_KEYS:
         key = "flash_info"
     response = RedirectResponse(url=url, status_code=302)
+    # URL-quote the message value to prevent cookie injection (e.g. newlines, semicolons)
     response.set_cookie(key, quote(message), max_age=5, httponly=True, samesite="lax")
     return response
 
@@ -653,8 +662,9 @@ async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: 
                 log.error_message = str(e)[:500]
                 failed += 1
             db.commit()
-            # 1-second delay between messages to respect WAHA rate limits
-            await asyncio.sleep(1)
+            # Rate limiting: WAHA recommends >= 1s between messages to avoid bans.
+            # Configurable via MESSAGE_SEND_DELAY environment variable.
+            await asyncio.sleep(MESSAGE_SEND_DELAY)
 
         campaign.sent_count = sent
         campaign.failed_count = failed

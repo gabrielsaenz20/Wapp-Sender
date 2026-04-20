@@ -157,10 +157,11 @@
 {% block extra_scripts %}
 <script>
 {% if campaign.status == 'sending' %}
-// Auto-refresh every 5 seconds while sending
-setTimeout(function() {
+// Auto-refresh every 5 seconds while campaign is sending
+var autoRefreshTimer = setTimeout(function() {
   location.reload();
 }, 5000);
+window.addEventListener('beforeunload', function() { clearTimeout(autoRefreshTimer); });
 {% endif %}
 
 const sendForm = document.getElementById('sendForm');

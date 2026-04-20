@@ -1,3 +1,4 @@
+import base64
 import httpx
 import asyncio
 from typing import Optional
@@ -46,7 +47,6 @@ class WAHAClient:
                 params={"format": "image"}
             )
             if r.status_code == 200:
-                import base64
                 b64 = base64.b64encode(r.content).decode()
                 content_type = r.headers.get("content-type", "image/png")
                 return {"data_url": f"data:{content_type};base64,{b64}"}

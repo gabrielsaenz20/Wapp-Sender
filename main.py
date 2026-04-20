@@ -3,8 +3,9 @@ import os
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional
+from urllib.parse import quote, unquote
 
-from fastapi import FastAPI, Request, Form, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, Request, Form, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -13,7 +14,7 @@ from dotenv import load_dotenv
 
 import openpyxl
 
-from database import engine, get_db, Base
+from database import engine, get_db, Base, SessionLocal
 import models
 from auth import (
     hash_password,
@@ -77,7 +78,6 @@ def _get_waha_client(settings: Optional[models.WAHASettings]) -> Optional[WAHACl
 
 def _flash(request: Request) -> dict:
     """Pull flash messages from cookie and return as dict."""
-    from urllib.parse import unquote
     flash = {}
     for key in ("flash_success", "flash_error", "flash_info"):
         val = request.cookies.get(key)
@@ -86,10 +86,17 @@ def _flash(request: Request) -> dict:
     return flash
 
 
+_ALLOWED_FLASH_KEYS = frozenset(("flash_success", "flash_error", "flash_info"))
+
+
 def _redirect_with_flash(url: str, key: str, message: str) -> RedirectResponse:
-    from urllib.parse import quote
+    # Ensure url is an internal path (no open redirect)
+    if not url.startswith("/") or "://" in url:
+        url = "/"
+    if key not in _ALLOWED_FLASH_KEYS:
+        key = "flash_info"
     response = RedirectResponse(url=url, status_code=302)
-    response.set_cookie(key, quote(message), max_age=5, httponly=True)
+    response.set_cookie(key, quote(message), max_age=5, httponly=True, samesite="lax")
     return response
 
 
@@ -111,6 +118,24 @@ def _ensure_admin(db: Session):
         )
         db.add(user)
         db.commit()
+
+
+# Ensure default admin user exists at import time (reliable in both tests and production)
+_startup_db = SessionLocal()
+try:
+    _ensure_admin(_startup_db)
+finally:
+    _startup_db.close()
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Called by uvicorn on startup – ensure admin user exists."""
+    db = SessionLocal()
+    try:
+        _ensure_admin(db)
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +204,6 @@ def _render_message(template: str, contact: models.Contact) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request, db: Session = Depends(get_db)):
-    _ensure_admin(db)
     user = _get_user(request, db)
     if user:
         return RedirectResponse("/dashboard")
@@ -188,7 +212,6 @@ async def root(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, db: Session = Depends(get_db)):
-    _ensure_admin(db)
     user = _get_user(request, db)
     if user:
         return RedirectResponse("/dashboard")
@@ -546,7 +569,12 @@ async def delete_campaign(campaign_id: int, request: Request, db: Session = Depe
 
 
 @app.post("/campaigns/{campaign_id}/send")
-async def send_campaign(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+async def send_campaign(
+    campaign_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     user = _require_user(request, db)
     campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
     if not campaign:
@@ -595,16 +623,14 @@ async def send_campaign(campaign_id: int, request: Request, db: Session = Depend
         log_ids.append(log.id)
     db.commit()
 
-    # Send messages asynchronously in background
-    asyncio.create_task(_send_campaign_messages(campaign.id, log_ids, client))
+    # Send messages in background using FastAPI's BackgroundTasks
+    background_tasks.add_task(_send_campaign_messages, campaign.id, log_ids, client)
 
     return RedirectResponse(f"/campaigns/{campaign_id}", status_code=302)
 
 
 async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: WAHAClient):
     """Background task to send campaign messages one by one."""
-    from database import SessionLocal
-
     db = SessionLocal()
     try:
         campaign = db.query(models.Campaign).filter_by(id=campaign_id).first()
@@ -627,7 +653,7 @@ async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: 
                 log.error_message = str(e)[:500]
                 failed += 1
             db.commit()
-            # Small delay to avoid rate limiting
+            # 1-second delay between messages to respect WAHA rate limits
             await asyncio.sleep(1)
 
         campaign.sent_count = sent

@@ -2,8 +2,17 @@ from passlib.context import CryptContext
 from itsdangerous import URLSafeTimedSerializer
 from fastapi import Request, HTTPException
 import os
+import logging
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production-please-use-a-long-random-string")
+logger = logging.getLogger(__name__)
+
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY:
+    SECRET_KEY = "insecure-default-key-please-set-SECRET_KEY-env-var"
+    logger.warning(
+        "SECRET_KEY environment variable is not set! "
+        "Using an insecure default. Set SECRET_KEY to a random 32+ character string."
+    )
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET_KEY)

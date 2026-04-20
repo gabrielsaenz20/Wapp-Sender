@@ -190,11 +190,13 @@
 {% block extra_scripts %}
 <script>
 {% if wa_status and wa_status.status == 'SCAN_QR_CODE' %}
-// Auto-refresh QR every 30 seconds
-let qrRefreshTimer = setInterval(refreshStatus, 30000);
+// Auto-refresh QR every 30 seconds while waiting for scan
+var qrRefreshTimer = setInterval(refreshStatus, 30000);
+window.addEventListener('beforeunload', function() { clearInterval(qrRefreshTimer); });
 {% elif wa_status and wa_status.status == 'STARTING' %}
-// Auto-refresh status while starting
-let startingTimer = setInterval(refreshStatus, 5000);
+// Auto-refresh status every 5 seconds while session is starting
+var startingTimer = setInterval(refreshStatus, 5000);
+window.addEventListener('beforeunload', function() { clearInterval(startingTimer); });
 {% endif %}
 
 function refreshStatus() {

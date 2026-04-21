@@ -25,12 +25,22 @@ class WAHAClient:
             return r.json()
 
     async def create_session(self, name: str) -> dict:
-        """Create (and start) a new session with an arbitrary name."""
+        """Create (and start) a session.
+
+        If the session already exists (WAHA returns 422) we fall back to
+        ``POST /api/sessions/{name}/start`` so that a stopped/disconnected
+        session can be restarted without deleting and re-creating it.
+        """
         async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
             r = await client.post(
                 f"{self.base_url}/api/sessions",
                 json={"name": name}
             )
+            if r.status_code == 422:
+                # Session already exists – restart it instead
+                r2 = await client.post(f"{self.base_url}/api/sessions/{name}/start")
+                r2.raise_for_status()
+                return r2.json() if r2.content else {}
             r.raise_for_status()
             return r.json() if r.content else {}
 

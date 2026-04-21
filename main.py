@@ -688,19 +688,31 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     wa_status = None
     wa_error = None
     qr_image = None
+    all_sessions: list = []
 
     if settings:
         client = _get_waha_client(settings)
         try:
             wa_status = await client.get_session_status()
+            # Normalize 'me' field: some WAHA versions return it as a plain string
+            # (e.g. the phone number) instead of a dict with 'pushName'/'id' keys.
+            # Converting it to a dict ensures the template can call .get() safely.
+            if isinstance(wa_status.get("me"), str):
+                wa_status["me"] = {"pushName": wa_status["me"], "id": {}}
             if wa_status.get("status") == "SCAN_QR_CODE":
                 qr_data = await client.get_qr()
                 if qr_data:
                     qr_image = qr_data["data_url"]
         except Exception as e:
             wa_error = str(e)
+        try:
+            all_sessions = await client.list_sessions()
+            if not isinstance(all_sessions, list):
+                all_sessions = []
+        except Exception:
+            all_sessions = []
 
-    ctx.update(wa_status=wa_status, wa_error=wa_error, qr_image=qr_image)
+    ctx.update(wa_status=wa_status, wa_error=wa_error, qr_image=qr_image, all_sessions=all_sessions)
     return templates.TemplateResponse("settings.html", ctx)
 
 
@@ -742,6 +754,43 @@ async def start_session(request: Request, db: Session = Depends(get_db)):
         return _redirect_with_flash("/settings", "flash_success", "Sesión iniciada ▶️")
     except Exception as e:
         return _redirect_with_flash("/settings", "flash_error", f"Error al iniciar sesión: {e}")
+
+
+@app.post("/settings/session/create")
+async def create_session(
+    request: Request,
+    session_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _require_user(request, db)
+    settings = db.query(models.WAHASettings).filter_by(user_id=user.id).first()
+    if not settings:
+        return _redirect_with_flash("/settings", "flash_error", "Primero guarda la configuración de WAHA.")
+    name = session_name.strip() or "default"
+    client = _get_waha_client(settings)
+    try:
+        await client.create_session(name)
+        return _redirect_with_flash("/settings", "flash_success", f"Sesión '{name}' creada ✅")
+    except Exception as e:
+        return _redirect_with_flash("/settings", "flash_error", f"Error al crear sesión: {e}")
+
+
+@app.post("/settings/session/stop-by-name")
+async def stop_session_by_name(
+    request: Request,
+    session_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _require_user(request, db)
+    settings = db.query(models.WAHASettings).filter_by(user_id=user.id).first()
+    if not settings:
+        return _redirect_with_flash("/settings", "flash_error", "Primero guarda la configuración de WAHA.")
+    client = _get_waha_client(settings)
+    try:
+        await client.stop_session_by_name(session_name)
+        return _redirect_with_flash("/settings", "flash_success", f"Sesión '{session_name}' detenida ⏹️")
+    except Exception as e:
+        return _redirect_with_flash("/settings", "flash_error", f"Error al detener sesión: {e}")
 
 
 @app.post("/settings/session/stop")

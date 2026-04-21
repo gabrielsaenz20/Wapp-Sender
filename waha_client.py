@@ -24,18 +24,30 @@ class WAHAClient:
             r.raise_for_status()
             return r.json()
 
-    async def start_session(self) -> dict:
+    async def create_session(self, name: str) -> dict:
+        """Create (and start) a new session with an arbitrary name."""
         async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
             r = await client.post(
                 f"{self.base_url}/api/sessions",
-                json={"name": self.session_name}
+                json={"name": name}
             )
             r.raise_for_status()
             return r.json()
 
+    async def start_session(self) -> dict:
+        """Create (and start) the configured session."""
+        return await self.create_session(self.session_name)
+
     async def stop_session(self) -> dict:
         async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
             r = await client.delete(f"{self.base_url}/api/sessions/{self.session_name}")
+            r.raise_for_status()
+            return r.json()
+
+    async def stop_session_by_name(self, name: str) -> dict:
+        """Stop (delete) a session by an arbitrary name."""
+        async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
+            r = await client.delete(f"{self.base_url}/api/sessions/{name}")
             r.raise_for_status()
             return r.json()
 

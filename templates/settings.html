@@ -31,13 +31,16 @@
           <div class="mb-3">
             <label class="form-label fw-semibold">🔑 API Key (opcional)</label>
             <input
-              type="text"
+              type="password"
               class="form-control"
               name="api_key"
-              value="{{ settings.api_key or '' if settings else '' }}"
-              placeholder="Tu API key de WAHA (si está configurada)"
+              value=""
+              placeholder="{{ '••••••• (guardada – deja vacío para no cambiar)' if settings and settings.api_key else 'Tu API key de WAHA (si está configurada)' }}"
               style="border-radius:10px;"
             />
+            {% if settings and settings.api_key %}
+            <div class="form-text text-muted">🔒 La clave está guardada. Déjalo vacío para mantenerla sin cambios.</div>
+            {% endif %}
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">📛 Nombre de sesión</label>
@@ -64,10 +67,13 @@
     <div class="card">
       <div class="card-header py-3 px-4">📱 Gestión de Sesión</div>
       <div class="card-body">
+        <p class="text-muted small mb-3">
+          Sesión configurada: <code>{{ settings.session_name }}</code>
+        </p>
         <div class="d-flex gap-2 flex-wrap">
           <form method="post" action="/settings/session/start">
             <button type="submit" class="btn btn-wapp" style="border-radius:10px;">
-              ▶️ Iniciar Sesión
+              ▶️ Iniciar / Crear Sesión
             </button>
           </form>
           <form method="post" action="/settings/session/stop" onsubmit="return confirm('¿Cerrar la sesión de WhatsApp?')">
@@ -78,63 +84,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Create new session -->
-    <div class="card mt-3">
-      <div class="card-header py-3 px-4">➕ Crear Nueva Sesión WAHA</div>
-      <div class="card-body">
-        <form method="post" action="/settings/session/create" class="d-flex gap-2 align-items-end flex-wrap">
-          <div class="flex-grow-1">
-            <label class="form-label fw-semibold mb-1">📛 Nombre de la nueva sesión</label>
-            <input
-              type="text"
-              class="form-control"
-              name="session_name"
-              placeholder="ej. mi-sesion"
-              required
-              style="border-radius:10px;"
-            />
-          </div>
-          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">
-            ➕ Crear Sesión
-          </button>
-        </form>
-      </div>
-    </div>
-
-    <!-- All sessions list -->
-    {% if all_sessions %}
-    <div class="card mt-3">
-      <div class="card-header py-3 px-4">📋 Sesiones en WAHA</div>
-      <div class="card-body p-0">
-        <ul class="list-group list-group-flush">
-          {% for sess in all_sessions %}
-          <li class="list-group-item d-flex justify-content-between align-items-center px-4 py-2">
-            <div>
-              <span class="fw-semibold">{{ sess.name if sess is mapping else sess }}</span>
-              {% if sess is mapping and sess.status %}
-              <span class="badge ms-2
-                {% if sess.status == 'WORKING' %}bg-success
-                {% elif sess.status == 'SCAN_QR_CODE' %}bg-warning text-dark
-                {% elif sess.status == 'STARTING' %}bg-info text-dark
-                {% else %}bg-secondary{% endif %}
-              ">{{ sess.status }}</span>
-              {% endif %}
-            </div>
-            <form method="post" action="/settings/session/stop-by-name"
-                  onsubmit="return confirm('¿Detener la sesión {{ (sess.name if sess is mapping else sess)|e }}?')"
-                  class="mb-0">
-              <input type="hidden" name="session_name" value="{{ sess.name if sess is mapping else sess }}">
-              <button type="submit" class="btn btn-sm btn-outline-danger" style="border-radius:8px;">
-                🗑️ Detener
-              </button>
-            </form>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-    {% endif %}
     {% endif %}
   </div>
 

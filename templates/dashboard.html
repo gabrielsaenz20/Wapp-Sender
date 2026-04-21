@@ -131,7 +131,7 @@
           </div>
           {% if wa_status.me %}
           <p class="mb-1 small text-muted">Cuenta: <strong>{{ wa_status.me.get('pushName', 'N/A') }}</strong></p>
-          <p class="mb-0 small text-muted">Número: <strong>{{ wa_status.me.get('id', {}).get('user', 'N/A') }}</strong></p>
+          <p class="mb-0 small text-muted">Número: <strong>{{ wa_status.me.get('id', {}).get('user', 'N/A') if wa_status.me.get('id') is mapping else wa_status.me.get('id', 'N/A') }}</strong></p>
           {% endif %}
           {% elif wa_status.status == 'SCAN_QR_CODE' %}
           <div class="d-flex align-items-center gap-2 mb-2">

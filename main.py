@@ -80,6 +80,27 @@ def _get_waha_client(settings: Optional[models.WAHASettings]) -> Optional[WAHACl
     )
 
 
+def _normalize_wa_status(wa_status: Optional[dict]) -> Optional[dict]:
+    """Normalise WAHA session-status response so templates can safely call
+    .get() on every nested field regardless of WAHA version quirks.
+
+    Known variations:
+    - ``me`` may be a plain string (phone number) instead of a dict.
+    - ``me.id`` may be a plain string like "5219981234567@c.us" instead of
+      the nested dict ``{"user": "5219981234567"}``.
+    """
+    if not isinstance(wa_status, dict):
+        return wa_status
+    me = wa_status.get("me")
+    if isinstance(me, str):
+        wa_status["me"] = {"pushName": me, "id": {}}
+    elif isinstance(me, dict):
+        raw_id = me.get("id")
+        if isinstance(raw_id, str):
+            me["id"] = {"user": raw_id.split("@")[0]}
+    return wa_status
+
+
 def _flash(request: Request) -> dict:
     """Pull flash messages from cookie and return as dict."""
     flash = {}
@@ -299,7 +320,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     if settings:
         client = _get_waha_client(settings)
         try:
-            wa_status = await client.get_session_status()
+            wa_status = _normalize_wa_status(await client.get_session_status())
         except Exception:
             wa_status = None
 
@@ -693,20 +714,8 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     if settings:
         client = _get_waha_client(settings)
         try:
-            wa_status = await client.get_session_status()
-            # Normalize 'me' field: some WAHA versions return it as a plain string
-            # (e.g. the phone number) instead of a dict with 'pushName'/'id' keys.
-            # Converting it to a dict ensures the template can call .get() safely.
-            me = wa_status.get("me")
-            if isinstance(me, str):
-                wa_status["me"] = {"pushName": me, "id": {}}
-            elif isinstance(me, dict):
-                # Some WAHA versions return 'id' as a plain string like
-                # "5219981234567@c.us" rather than {"user": "5219981234567"}.
-                raw_id = me.get("id")
-                if isinstance(raw_id, str):
-                    me["id"] = {"user": raw_id.split("@")[0]}
-            if wa_status.get("status") == "SCAN_QR_CODE":
+            wa_status = _normalize_wa_status(await client.get_session_status())
+            if wa_status and wa_status.get("status") == "SCAN_QR_CODE":
                 qr_data = await client.get_qr()
                 if qr_data:
                     qr_image = qr_data["data_url"]

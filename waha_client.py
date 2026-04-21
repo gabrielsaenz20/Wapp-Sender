@@ -32,7 +32,7 @@ class WAHAClient:
                 json={"name": name}
             )
             r.raise_for_status()
-            return r.json()
+            return r.json() if r.content else {}
 
     async def start_session(self) -> dict:
         """Create (and start) the configured session."""
@@ -42,14 +42,15 @@ class WAHAClient:
         async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
             r = await client.delete(f"{self.base_url}/api/sessions/{self.session_name}")
             r.raise_for_status()
-            return r.json()
+            # WAHA may return 204 No Content with an empty body
+            return r.json() if r.content else {}
 
     async def stop_session_by_name(self, name: str) -> dict:
         """Stop (delete) a session by an arbitrary name."""
         async with httpx.AsyncClient(headers=self.headers, timeout=15) as client:
             r = await client.delete(f"{self.base_url}/api/sessions/{name}")
             r.raise_for_status()
-            return r.json()
+            return r.json() if r.content else {}
 
     async def get_qr(self) -> Optional[dict]:
         """Returns QR code as base64 image or None if already authenticated."""

@@ -373,41 +373,51 @@
         integrity="sha384-YvpcrYf0tY3lHB60NNkmXc4s9bIOgUxi8T/jzmFSqvFwFjxlJl8QX0rFkTdGlJ5"
         crossorigin="anonymous"></script>
 <!-- Fallback: if Bootstrap JS failed to load (CDN blocked / offline), provide a
-     minimal modal open/close implementation so the UI still works. -->
+     minimal modal open/close implementation so the UI still works.
+     Also exposes window.__bsShowModal(el) for programmatic use. -->
 <script>
 (function () {
-  function bsReady() {
-    // If Bootstrap loaded successfully nothing to do
-    if (window.bootstrap && window.bootstrap.Modal) return;
-
-    function showModal(selector) {
-      var modal = document.querySelector(selector);
-      if (!modal) return;
-      modal.style.display = 'block';
-      modal.classList.add('show');
-      document.body.classList.add('modal-open');
+  function showModalEl(el) {
+    if (!el) return;
+    if (window.bootstrap && window.bootstrap.Modal) {
+      new bootstrap.Modal(el).show();
+      return;
+    }
+    el.style.display = 'block';
+    el.classList.add('show');
+    document.body.classList.add('modal-open');
+    if (!document.getElementById('__fb_bd__')) {
       var bd = document.createElement('div');
       bd.className = 'modal-backdrop fade show';
       bd.id = '__fb_bd__';
       document.body.appendChild(bd);
     }
+  }
 
-    function hideModals() {
-      document.querySelectorAll('.modal.show').forEach(function (m) {
-        m.style.display = '';
-        m.classList.remove('show');
-      });
-      document.body.classList.remove('modal-open');
-      var bd = document.getElementById('__fb_bd__');
-      if (bd) bd.remove();
-    }
+  function hideModals() {
+    document.querySelectorAll('.modal.show').forEach(function (m) {
+      m.style.display = '';
+      m.classList.remove('show');
+    });
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('__fb_bd__');
+    if (bd) bd.remove();
+  }
+
+  // Global helpers for programmatic use in page scripts
+  window.__bsShowModal = showModalEl;
+  window.__bsHideModals = hideModals;
+
+  function attachFallbackListeners() {
+    // Only attach if Bootstrap didn't load
+    if (window.bootstrap && window.bootstrap.Modal) return;
 
     document.addEventListener('click', function (e) {
-      // Open modal
+      // Open modal via data-bs-toggle
       var trigger = e.target.closest('[data-bs-toggle="modal"]');
       if (trigger) {
         var target = trigger.getAttribute('data-bs-target') || trigger.getAttribute('data-target');
-        if (target) { showModal(target); return; }
+        if (target) { showModalEl(document.querySelector(target)); return; }
       }
       // Close modal via dismiss button or backdrop click
       if (e.target.closest('[data-bs-dismiss="modal"]') || e.target.id === '__fb_bd__') {
@@ -415,17 +425,15 @@
       }
     });
 
-    // Close on Escape key
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') hideModals();
     });
   }
 
-  // Run after the CDN script has had a chance to execute
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bsReady);
+    document.addEventListener('DOMContentLoaded', attachFallbackListeners);
   } else {
-    bsReady();
+    attachFallbackListeners();
   }
 })();
 </script>

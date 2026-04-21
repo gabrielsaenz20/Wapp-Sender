@@ -171,7 +171,7 @@
 {% block extra_scripts %}
 <script>
 function openImportModal() {
-  new bootstrap.Modal(document.getElementById('importModal')).show();
+  window.__bsShowModal(document.getElementById('importModal'));
 }
 </script>
 {% endblock %}

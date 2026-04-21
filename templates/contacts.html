@@ -172,13 +172,13 @@
 function openImportModal(listId, listName) {
   document.getElementById('importListName').textContent = listName;
   document.getElementById('importForm').action = '/contacts/' + listId + '/import';
-  new bootstrap.Modal(document.getElementById('importModal')).show();
+  window.__bsShowModal(document.getElementById('importModal'));
 }
 
 function confirmDelete(listId, listName) {
   document.getElementById('deleteListName').textContent = listName;
   document.getElementById('deleteForm').action = '/contacts/' + listId + '/delete';
-  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+  window.__bsShowModal(document.getElementById('deleteModal'));
 }
 </script>
 {% endblock %}

@@ -697,8 +697,15 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
             # Normalize 'me' field: some WAHA versions return it as a plain string
             # (e.g. the phone number) instead of a dict with 'pushName'/'id' keys.
             # Converting it to a dict ensures the template can call .get() safely.
-            if isinstance(wa_status.get("me"), str):
-                wa_status["me"] = {"pushName": wa_status["me"], "id": {}}
+            me = wa_status.get("me")
+            if isinstance(me, str):
+                wa_status["me"] = {"pushName": me, "id": {}}
+            elif isinstance(me, dict):
+                # Some WAHA versions return 'id' as a plain string like
+                # "5219981234567@c.us" rather than {"user": "5219981234567"}.
+                raw_id = me.get("id")
+                if isinstance(raw_id, str):
+                    me["id"] = {"user": raw_id.split("@")[0]}
             if wa_status.get("status") == "SCAN_QR_CODE":
                 qr_data = await client.get_qr()
                 if qr_data:

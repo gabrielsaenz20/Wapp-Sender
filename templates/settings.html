@@ -159,7 +159,7 @@
             <div style="font-size:2.5rem;">👤</div>
             <div>
               <div class="fw-bold">{{ wa_status.me.get('pushName', 'N/A') }}</div>
-              <div class="text-muted small">+{{ wa_status.me.get('id', {}).get('user', 'N/A') }}</div>
+              <div class="text-muted small">+{{ wa_status.me.get('id', {}).get('user', 'N/A') if wa_status.me.get('id') is mapping else wa_status.me.get('id', 'N/A') }}</div>
             </div>
           </div>
           {% endif %}

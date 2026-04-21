@@ -1,4 +1,4 @@
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from itsdangerous import URLSafeTimedSerializer
 from fastapi import Request, HTTPException
 import os
@@ -14,7 +14,6 @@ if not SECRET_KEY:
         "Using an insecure default. Set SECRET_KEY to a random 32+ character string."
     )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 SESSION_COOKIE = "wapp_session"
@@ -22,11 +21,11 @@ SESSION_MAX_AGE = 60 * 60 * 8  # 8 hours
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def create_session_token(user_id: int) -> str:

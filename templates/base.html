@@ -338,7 +338,26 @@
       <h6 class="mb-0 fw-semibold text-muted">{% block page_title %}{% endblock %}</h6>
     </div>
     <div class="d-flex align-items-center gap-3">
-      <span class="text-muted small">👤 {{ current_user.username }}</span>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-light dropdown-toggle d-flex align-items-center gap-1 px-3"
+                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                style="border-radius:20px; font-size:0.88rem; border:1px solid #dee2e6;">
+          👤 {{ current_user.username }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="min-width:200px; border-radius:10px;">
+          <li>
+            <a class="dropdown-item py-2" href="/change-password">
+              🔑 Cambiar Contraseña
+            </a>
+          </li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <li>
+            <a class="dropdown-item py-2 text-danger" href="/logout">
+              🚪 Cerrar Sesión
+            </a>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
   <div class="page-body">

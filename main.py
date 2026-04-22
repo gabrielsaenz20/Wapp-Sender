@@ -281,9 +281,47 @@ async def logout():
     return response
 
 
-# ---------------------------------------------------------------------------
-# Routes: Dashboard
-# ---------------------------------------------------------------------------
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request, db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    ctx = _base_ctx(request, db, active_page="change_password")
+    return templates.TemplateResponse("change_password.html", ctx)
+
+
+@app.post("/change-password")
+async def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _require_user(request, db)
+
+    if not verify_password(current_password, user.password_hash):
+        return _redirect_with_flash(
+            "/change-password", "flash_error", "La contraseña actual es incorrecta."
+        )
+
+    if new_password != confirm_password:
+        return _redirect_with_flash(
+            "/change-password", "flash_error", "Las contraseñas nuevas no coinciden."
+        )
+
+    if len(new_password) < 6:
+        return _redirect_with_flash(
+            "/change-password", "flash_error", "La contraseña debe tener al menos 6 caracteres."
+        )
+
+    user.password_hash = hash_password(new_password)
+    db.commit()
+
+    return _redirect_with_flash(
+        "/dashboard", "flash_success", "Contraseña actualizada correctamente 🔑"
+    )
+
+
+
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, db: Session = Depends(get_db)):

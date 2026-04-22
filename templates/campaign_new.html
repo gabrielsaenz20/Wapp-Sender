@@ -76,6 +76,40 @@
           </div>
           <div>
             <label class="form-label fw-semibold">💬 Texto del mensaje</label>
+            <!-- Formatting toolbar -->
+            <div class="msg-toolbar d-flex align-items-center gap-1 flex-wrap" id="msgToolbar">
+              <button type="button" class="msg-fmt-btn" onclick="wrapSelection('*','*')" title="Negrita (*texto*)">
+                <strong>B</strong>
+              </button>
+              <button type="button" class="msg-fmt-btn" onclick="wrapSelection('_','_')" title="Cursiva (_texto_)">
+                <em>I</em>
+              </button>
+              <button type="button" class="msg-fmt-btn" onclick="wrapSelection('~','~')" title="Tachado (~texto~)">
+                <s>S</s>
+              </button>
+              <button type="button" class="msg-fmt-btn" onclick="wrapSelection('`','`')" title="Monoespaciado (`texto`)">
+                <code style="font-size:0.85em;">M</code>
+              </button>
+              <div class="vr mx-1" style="height:22px;"></div>
+              <!-- Emoji picker -->
+              <div class="position-relative" id="emojiPickerWrapper">
+                <button type="button" class="msg-fmt-btn" id="emojiToggleBtn" onclick="toggleEmojiPicker()" title="Insertar emoji">
+                  😊
+                </button>
+                <div id="emojiPicker" class="emoji-picker-dropdown d-none">
+                  <div class="emoji-tabs d-flex gap-1 p-2 border-bottom flex-wrap">
+                    <button type="button" class="emoji-tab active" onclick="showEmojiCategory('smileys', this)">😀</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('people', this)">👋</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('animals', this)">🐶</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('food', this)">🍕</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('travel', this)">✈️</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('objects', this)">💡</button>
+                    <button type="button" class="emoji-tab" onclick="showEmojiCategory('symbols', this)">❤️</button>
+                  </div>
+                  <div id="emojiGrid" class="emoji-grid p-2"></div>
+                </div>
+              </div>
+            </div>
             <textarea
               class="form-control"
               name="message_template"
@@ -83,10 +117,10 @@
               rows="8"
               placeholder="Ej: ¡Hola &#123;&#123;name&#125;&#125;! 🎉&#10;&#10;Te invitamos a nuestro evento especial este viernes.&#10;&#10;¡Esperamos verte! 🙌"
               required
-              style="border-radius:10px; font-size:0.95rem; line-height:1.6;"
+              style="border-radius:0 0 10px 10px; font-size:0.95rem; line-height:1.6;"
             ></textarea>
             <div class="d-flex justify-content-between mt-1">
-              <div class="form-text">Haz clic en las variables de arriba para insertarlas.</div>
+              <div class="form-text">Haz clic en las variables de arriba para insertarlas. Usa la barra para formatear.</div>
               <div class="form-text" id="charCount">0 caracteres</div>
             </div>
           </div>
@@ -137,6 +171,80 @@
 </form>
 {% endblock %}
 
+{% block extra_head %}
+<style>
+  /* Formatting toolbar */
+  .msg-toolbar {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+    padding: 6px 10px;
+  }
+  .msg-fmt-btn {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: all .15s;
+    color: #333;
+  }
+  .msg-fmt-btn:hover {
+    background: var(--wapp-green);
+    border-color: var(--wapp-green);
+    color: #fff;
+  }
+  /* Emoji picker */
+  .emoji-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 1050;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    width: 320px;
+  }
+  .emoji-tab {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: all .12s;
+  }
+  .emoji-tab:hover, .emoji-tab.active {
+    background: #e8f5e9;
+    border-color: var(--wapp-green);
+  }
+  .emoji-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .emoji-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 1.3rem;
+    padding: 3px 5px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background .1s;
+  }
+  .emoji-btn:hover {
+    background: #e8f5e9;
+    border-color: var(--wapp-green);
+  }
+</style>
+{% endblock %}
 {% block extra_scripts %}
 <script>
 // Contact counts per list
@@ -151,18 +259,33 @@ const msgInput = document.getElementById('messageTemplate');
 const preview = document.getElementById('messagePreview');
 const charCount = document.getElementById('charCount');
 
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderWhatsAppFormat(text) {
+  // Escape HTML first
+  let out = escapeHtml(text);
+  // WhatsApp formatting (non-greedy, single-line per marker)
+  out = out.replace(/\*([^*\n]+?)\*/g, '<strong>$1</strong>');
+  out = out.replace(/_([^_\n]+?)_/g, '<em>$1</em>');
+  out = out.replace(/~([^~\n]+?)~/g, '<del>$1</del>');
+  out = out.replace(/`([^`\n]+?)`/g, '<code>$1</code>');
+  return out;
+}
+
 function updatePreview() {
   const text = msgInput.value;
   charCount.textContent = text.length + ' caracteres';
   if (text.trim()) {
     // Replace placeholders with sample values for preview
     let sample = text
-      .replace(/\{\{name\}\}/g, '<strong>Juan García</strong>')
+      .replace(/\{\{name\}\}/g, '*Juan García*')
       .replace(/\{\{phone\}\}/g, '5219981234567');
     // Replace other placeholders
-    sample = sample.replace(/\{\{(\w+)\}\}/g, '<em>[$1]</em>');
-    // Convert newlines
-    sample = sample.replace(/\n/g, '<br>');
+    sample = sample.replace(/\{\{(\w+)\}\}/g, '[$1]');
+    // Apply WhatsApp formatting then convert newlines
+    sample = renderWhatsAppFormat(sample).replace(/\n/g, '<br>');
     preview.innerHTML = sample;
   } else {
     preview.innerHTML = '<span class="text-muted" style="font-style:italic;">El mensaje aparecerá aquí...</span>';
@@ -171,15 +294,39 @@ function updatePreview() {
 
 msgInput.addEventListener('input', updatePreview);
 
-// Insert placeholder at cursor
-function insertPlaceholder(placeholder) {
+// Insert text at cursor position
+function insertAtCursor(text) {
   const start = msgInput.selectionStart;
   const end = msgInput.selectionEnd;
-  const text = msgInput.value;
-  msgInput.value = text.substring(0, start) + placeholder + text.substring(end);
-  msgInput.selectionStart = msgInput.selectionEnd = start + placeholder.length;
+  const val = msgInput.value;
+  msgInput.value = val.substring(0, start) + text + val.substring(end);
+  msgInput.selectionStart = msgInput.selectionEnd = start + text.length;
   msgInput.focus();
   updatePreview();
+}
+
+// Wrap selected text with markers (or insert markers at cursor if nothing selected)
+function wrapSelection(before, after) {
+  const start = msgInput.selectionStart;
+  const end = msgInput.selectionEnd;
+  const val = msgInput.value;
+  const selected = val.substring(start, end);
+  const replacement = before + (selected || 'texto') + after;
+  msgInput.value = val.substring(0, start) + replacement + val.substring(end);
+  if (selected) {
+    msgInput.selectionStart = start;
+    msgInput.selectionEnd = start + replacement.length;
+  } else {
+    // Place cursor between markers
+    msgInput.selectionStart = msgInput.selectionEnd = start + before.length;
+  }
+  msgInput.focus();
+  updatePreview();
+}
+
+// Insert placeholder at cursor
+function insertPlaceholder(placeholder) {
+  insertAtCursor(placeholder);
 }
 
 // Helper to insert placeholder from chip (builds {{col}} safely in JS)
@@ -188,6 +335,63 @@ function insertFromChip(el) {
   var close = '}' + '}';
   insertPlaceholder(open + el.dataset.ph + close);
 }
+
+// ─── Emoji Picker ────────────────────────────────────────────────────────────
+const EMOJI_CATEGORIES = {
+  smileys: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'],
+  people: ['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','👣','👀','👁','🫦','👄','🦷','👅','🧠','🫀','🫁','🦴','👤','👥','🫂','👶','🧒','👦','👧','🧑','👱','👨','🧔','👩','🧓','👴','👵','🙍','🙎','🙅','🙆','💁','🙋','🧏','🙇','🤦','🤷','💆','💇','🚶','🧍','🧎','🏃','💃','🕺','🕴','👯','🧖','🧗','🏇','🏊','🏄','🚣','🧘'],
+  animals: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🪶','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿','🦔'],
+  food: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶','🫑','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🫖','🍺','🍻','🥂','🍷','🫗','🥃','🍸','🍹','🧉','🍾','🧊'],
+  travel: ['🌍','🌎','🌏','🌐','🗺','🧭','⛰','🏔','🌋','🗻','🏕','🏖','🏜','🏝','🏞','🏟','🏛','🏗','🧱','🪨','🪵','🛖','🏘','🏚','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩','🕋','⛲','⛺','🌁','🌃','🏙','🌄','🌅','🌆','🌇','🌉','♨️','🎠','🛝','🎡','🎢','💈','🎪','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🛻','🚚','🚛','🚜','🏎','🏍','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚏','🛣','🛤','⛽','🛞','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳','⛴','🛥','🚢','✈️','🛩','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰','🚀','🛸'],
+  objects: ['⌚','📱','💻','⌨️','🖥','🖨','🖱','🖲','💽','💾','💿','📀','📷','📸','📹','🎥','📽','🎞','📞','☎️','📟','📠','📺','📻','🧭','⏱','⏲','⏰','🕰','⌛','⏳','📡','🔋','🔌','💡','🔦','🕯','🪔','🧯','🛢','💸','💵','💴','💶','💷','💰','💳','💎','⚖️','🪜','🧰','🔧','🪛','🔩','⚙️','🗜','🔗','⛓','🪝','🧲','🪜','🔑','🗝','🔐','🔏','🔓','🔒','🚪','🪣','🧴','🧷','🧹','🧺','🧻','🪠','🧼','🫧','🪥','🧽','🧯','🛒','🚿','🛁','🪠','🧸','🪆','🖼','🪞','🪟','🛋','🪑','🚽','🪤','🪣','📦','📫','📪','📬','📭','📮','🗳','✏️','✒️','🖋','🖊','📝','📁','📂','🗂','📅','📆','🗒','🗓','📇','📈','📉','📊','📋','📌','📍','🗺','📎','🖇','📏','📐','✂️','🗃','🗄','🗑','🔍','🔎','🔏','🔐','🔒','🔓'],
+  symbols: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸','🔱','⚜️','🔰','♻️','✅','🈯','💹','❎','🌐','💠','Ⓜ️','🌀','💤','🏧','🚾','♿','🅿️','🛗','🈳','🈹','🚺','🚹','🚼','🚻','⚧','🚮','🎦','📶','🈁','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔢','#️⃣','*️⃣','⏏️','▶️','⏸','⏹','⏺','⏭','⏮','⏩','⏪','⏫','⏬','◀️','🔼','🔽','➡️','⬅️','⬆️','⬇️','↗️','↘️','↙️','↖️','↕️','↔️','↪️','↩️','⤴️','⤵️','🔀','🔁','🔂','🔄','🔃','🎵','🎶','➕','➖','➗','✖️','♾','💲','💱','™️','©️','®️','〰️','➰','➿','🔚','🔙','🔛','🔝','🔜','✔️','☑️','🔘','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔷','🔶','🔹','🔸','🔲','🔳','▪️','▫️','◾','◽','◼️','◻️','🟥','🟧','🟨','🟩','🟦','🟪','⬛','⬜','🟫','🔈','🔇','🔉','🔊','🔔','🔕','📣','📢','👁‍🗨','💬','💭','🗯','♠️','♣️','♥️','♦️','🃏','🀄','🎴','🔮','🧿']
+};
+
+let currentEmojiCategory = 'smileys';
+
+function buildEmojiGrid(category) {
+  const grid = document.getElementById('emojiGrid');
+  const emojis = EMOJI_CATEGORIES[category] || [];
+  grid.innerHTML = '';
+  emojis.forEach(function(e) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'emoji-btn';
+    btn.title = e;
+    btn.textContent = e;
+    btn.addEventListener('click', function() { insertEmoji(e); });
+    grid.appendChild(btn);
+  });
+}
+
+function showEmojiCategory(category, tabEl) {
+  currentEmojiCategory = category;
+  document.querySelectorAll('.emoji-tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  buildEmojiGrid(category);
+}
+
+function toggleEmojiPicker() {
+  const picker = document.getElementById('emojiPicker');
+  if (picker.classList.contains('d-none')) {
+    picker.classList.remove('d-none');
+    buildEmojiGrid(currentEmojiCategory);
+  } else {
+    picker.classList.add('d-none');
+  }
+}
+
+function insertEmoji(emoji) {
+  insertAtCursor(emoji);
+}
+
+// Close emoji picker when clicking outside
+document.addEventListener('click', function(e) {
+  const wrapper = document.getElementById('emojiPickerWrapper');
+  if (wrapper && !wrapper.contains(e.target)) {
+    document.getElementById('emojiPicker').classList.add('d-none');
+  }
+});
 
 // Update selected contacts count
 const checkboxes = document.querySelectorAll('.list-checkbox');

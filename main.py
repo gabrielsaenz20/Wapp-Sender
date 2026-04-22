@@ -587,6 +587,105 @@ async def campaign_detail(campaign_id: int, request: Request, db: Session = Depe
     return templates.TemplateResponse("campaign_detail.html", ctx)
 
 
+@app.get("/campaigns/{campaign_id}/edit", response_class=HTMLResponse)
+async def edit_campaign_page(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
+    if not campaign:
+        raise HTTPException(status_code=404)
+    if campaign.status != "draft":
+        return _redirect_with_flash(
+            f"/campaigns/{campaign_id}",
+            "flash_error",
+            "Solo se pueden editar campañas en borrador.",
+        )
+    ctx = _base_ctx(request, db, active_page="campaigns")
+    contact_lists = (
+        db.query(models.ContactList)
+        .filter_by(user_id=user.id)
+        .order_by(models.ContactList.name)
+        .all()
+    )
+    extra_cols: set[str] = set()
+    for cl in contact_lists:
+        for c in cl.contacts:
+            if c.extra_data:
+                extra_cols.update(c.extra_data.keys())
+
+    selected_list_ids = {cl_link.list_id for cl_link in campaign.lists}
+    ctx.update(
+        contact_lists=contact_lists,
+        available_columns=sorted(extra_cols),
+        campaign=campaign,
+        selected_list_ids=selected_list_ids,
+        editing=True,
+    )
+    return templates.TemplateResponse("campaign_new.html", ctx)
+
+
+@app.post("/campaigns/{campaign_id}/edit")
+async def update_campaign(
+    campaign_id: int,
+    request: Request,
+    name: str = Form(...),
+    message_template: str = Form(...),
+    action: str = Form("save_draft"),
+    db: Session = Depends(get_db),
+):
+    user = _require_user(request, db)
+    campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
+    if not campaign:
+        raise HTTPException(status_code=404)
+    if campaign.status != "draft":
+        return _redirect_with_flash(
+            f"/campaigns/{campaign_id}",
+            "flash_error",
+            "Solo se pueden editar campañas en borrador.",
+        )
+
+    form_data = await request.form()
+    list_ids = form_data.getlist("list_ids")
+
+    if not list_ids:
+        return _redirect_with_flash(
+            f"/campaigns/{campaign_id}/edit",
+            "flash_error",
+            "Selecciona al menos una lista de contactos.",
+        )
+
+    # Update campaign fields
+    campaign.name = name
+    campaign.message_template = message_template
+
+    # Replace contact list associations
+    for cl_link in list(campaign.lists):
+        db.delete(cl_link)
+    db.flush()
+
+    phones_seen: set[str] = set()
+    total = 0
+    for lid in list_ids:
+        cl = db.query(models.ContactList).filter_by(id=int(lid), user_id=user.id).first()
+        if cl:
+            db.add(models.CampaignList(campaign_id=campaign.id, list_id=int(lid)))
+            for c in cl.contacts:
+                if c.phone not in phones_seen:
+                    phones_seen.add(c.phone)
+                    total += 1
+
+    campaign.total_contacts = total
+    db.commit()
+
+    if action == "send":
+        return RedirectResponse(f"/campaigns/{campaign.id}/send", status_code=302)
+
+    return _redirect_with_flash(
+        f"/campaigns/{campaign.id}",
+        "flash_success",
+        "Campaña actualizada ✏️",
+    )
+
+
 @app.post("/campaigns/{campaign_id}/delete")
 async def delete_campaign(campaign_id: int, request: Request, db: Session = Depends(get_db)):
     user = _require_user(request, db)

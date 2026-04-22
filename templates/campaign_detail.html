@@ -23,11 +23,16 @@
     </div>
   </div>
   {% if campaign.status == 'draft' %}
-  <form method="post" action="/campaigns/{{ campaign.id }}/send" id="sendForm">
-    <button type="submit" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendNowBtn">
-      🚀 Enviar Ahora
-    </button>
-  </form>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/campaigns/{{ campaign.id }}/edit" class="btn btn-outline-secondary" style="border-radius:10px;">
+      ✏️ Editar
+    </a>
+    <form method="post" action="/campaigns/{{ campaign.id }}/send" id="sendForm">
+      <button type="submit" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendNowBtn">
+        🚀 Enviar Ahora
+      </button>
+    </form>
+  </div>
   {% endif %}
 </div>
 

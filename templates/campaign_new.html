@@ -1,20 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Nueva Campaña – Wapp Sender{% endblock %}
-{% block page_title %}✉️ Nueva Campaña{% endblock %}
+{% block title %}{% if editing %}Editar Campaña{% else %}Nueva Campaña{% endif %} – Wapp Sender{% endblock %}
+{% block page_title %}{% if editing %}✏️ Editar Campaña{% else %}✉️ Nueva Campaña{% endif %}{% endblock %}
 
 {% block content %}
 <div class="mb-4">
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb mb-1">
       <li class="breadcrumb-item"><a href="/campaigns" class="text-decoration-none">📢 Campañas</a></li>
+      {% if editing %}
+      <li class="breadcrumb-item"><a href="/campaigns/{{ campaign.id }}" class="text-decoration-none">{{ campaign.name }}</a></li>
+      <li class="breadcrumb-item active">Editar</li>
+      {% else %}
       <li class="breadcrumb-item active">Nueva Campaña</li>
+      {% endif %}
     </ol>
   </nav>
-  <h5 class="fw-bold mb-0">✉️ Crear Nueva Campaña</h5>
-  <small class="text-muted">Configura y envía mensajes personalizados masivamente</small>
+  <h5 class="fw-bold mb-0">{% if editing %}✏️ Editar Campaña{% else %}✉️ Crear Nueva Campaña{% endif %}</h5>
+  <small class="text-muted">{% if editing %}Modifica los datos de tu campaña borrador{% else %}Configura y envía mensajes personalizados masivamente{% endif %}</small>
 </div>
 
-<form method="post" action="/campaigns" id="campaignForm">
+<form method="post" action="{% if editing %}/campaigns/{{ campaign.id }}/edit{% else %}/campaigns{% endif %}" id="campaignForm">
   <div class="row g-4">
     <!-- Left column: settings -->
     <div class="col-lg-7">
@@ -23,7 +28,7 @@
         <div class="card-body">
           <div class="mb-3">
             <label class="form-label fw-semibold">📌 Nombre de la campaña</label>
-            <input type="text" class="form-control" name="name" placeholder="Ej: Invitación Evento Navidad 2024" required style="border-radius:10px;" />
+            <input type="text" class="form-control" name="name" placeholder="Ej: Invitación Evento Navidad 2024" required style="border-radius:10px;" value="{{ campaign.name if editing else '' }}" />
           </div>
         </div>
       </div>
@@ -37,7 +42,7 @@
             {% for cl in contact_lists %}
             <div class="col-md-6">
               <label class="d-flex align-items-center gap-2 p-3 border rounded-3 cursor-pointer list-check-item" style="cursor:pointer; transition:all .15s;">
-                <input type="checkbox" class="form-check-input list-checkbox mt-0" name="list_ids" value="{{ cl.id }}" style="width:18px;height:18px;" />
+                <input type="checkbox" class="form-check-input list-checkbox mt-0" name="list_ids" value="{{ cl.id }}" style="width:18px;height:18px;" {% if editing and cl.id in selected_list_ids %}checked{% endif %} />
                 <div>
                   <div class="fw-semibold small">{{ cl.name }}</div>
                   <div class="text-muted" style="font-size:0.75rem;">{{ cl.contacts|length }} contacto{{ 's' if cl.contacts|length != 1 }}</div>
@@ -118,7 +123,7 @@
               placeholder="Ej: ¡Hola &#123;&#123;name&#125;&#125;! 🎉&#10;&#10;Te invitamos a nuestro evento especial este viernes.&#10;&#10;¡Esperamos verte! 🙌"
               required
               style="border-radius:0 0 10px 10px; font-size:0.95rem; line-height:1.6;"
-            ></textarea>
+            >{{ campaign.message_template if editing else '' }}</textarea>
             <div class="d-flex justify-content-between mt-1">
               <div class="form-text">Haz clic en las variables de arriba para insertarlas. Usa la barra para formatear.</div>
               <div class="form-text" id="charCount">0 caracteres</div>
@@ -158,7 +163,7 @@
 
           <div class="d-grid gap-2 mt-3">
             <button type="submit" name="action" value="save_draft" class="btn btn-outline-secondary" style="border-radius:10px;">
-              📝 Guardar Borrador
+              {% if editing %}💾 Guardar Cambios{% else %}📝 Guardar Borrador{% endif %}
             </button>
             <button type="submit" name="action" value="send" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendBtn">
               🚀 Enviar Ahora
@@ -422,7 +427,19 @@ checkboxes.forEach(cb => {
       label.style.background = '';
     }
   });
+  // Apply initial style for pre-checked boxes (edit mode)
+  if (cb.checked) {
+    const label = cb.closest('.list-check-item');
+    if (label) {
+      label.style.borderColor = 'var(--wapp-green)';
+      label.style.background = '#f0fff4';
+    }
+  }
 });
+
+// Initialise summary and preview counts on page load
+updateSummary();
+updatePreview();
 
 // Send button loading state
 document.getElementById('campaignForm').addEventListener('submit', function(e) {

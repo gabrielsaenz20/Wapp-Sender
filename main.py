@@ -1,9 +1,11 @@
 import asyncio
+import logging
 import os
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional
 from urllib.parse import quote, unquote
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request, Form, UploadFile, File, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -28,6 +30,11 @@ from waha_client import WAHAClient
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+# Quito, Ecuador timezone (UTC-5, no DST)
+QUITO_TZ = ZoneInfo("America/Guayaquil")
+
 # Delay in seconds between messages to respect WAHA / WhatsApp rate limits.
 # Increase if messages fail due to rate limiting. WAHA recommends at least 1s.
 MESSAGE_SEND_DELAY = float(os.getenv("MESSAGE_SEND_DELAY", "1.0"))
@@ -44,6 +51,16 @@ if os.path.isdir("static"):
 
 templates = Jinja2Templates(directory="templates")
 
+
+def _quito_fmt(dt, fmt: str = "%d/%m/%Y %H:%M") -> str:
+    """Jinja2 filter: converts a naive-UTC datetime to a Quito-local time string."""
+    if dt is None:
+        return "–"
+    return dt.replace(tzinfo=timezone.utc).astimezone(QUITO_TZ).strftime(fmt)
+
+
+templates.env.filters["quito_fmt"] = _quito_fmt
+
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
 
@@ -54,6 +71,22 @@ Base.metadata.create_all(bind=engine)
 
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _now_quito_input_str() -> str:
+    """Return the current Quito time formatted for a datetime-local HTML input."""
+    return datetime.now(QUITO_TZ).strftime("%Y-%m-%dT%H:%M")
+
+
+def _parse_quito_dt(dt_str: str) -> Optional[datetime]:
+    """Parse a datetime-local input string (Quito local time) → naive UTC datetime."""
+    if not dt_str:
+        return None
+    try:
+        local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M").replace(tzinfo=QUITO_TZ)
+        return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 def _get_user(request: Request, db: Session) -> Optional[models.User]:
@@ -160,12 +193,13 @@ finally:
 
 @app.on_event("startup")
 async def on_startup():
-    """Called by uvicorn on startup – ensure admin user exists."""
+    """Called by uvicorn on startup – ensure admin user exists and start scheduler."""
     db = SessionLocal()
     try:
         _ensure_admin(db)
     finally:
         db.close()
+    asyncio.create_task(_scheduler_loop())
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +585,8 @@ async def new_campaign_page(request: Request, db: Session = Depends(get_db)):
             if c.extra_data:
                 extra_cols.update(c.extra_data.keys())
 
-    ctx.update(contact_lists=contact_lists, available_columns=sorted(extra_cols))
+    ctx.update(contact_lists=contact_lists, available_columns=sorted(extra_cols),
+               now_quito_str=_now_quito_input_str())
     return templates.TemplateResponse("campaign_new.html", ctx)
 
 
@@ -561,6 +596,7 @@ async def create_campaign(
     name: str = Form(...),
     message_template: str = Form(...),
     action: str = Form("save_draft"),
+    scheduled_at: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _require_user(request, db)
@@ -571,6 +607,19 @@ async def create_campaign(
         return _redirect_with_flash(
             "/campaigns/new", "flash_error", "Selecciona al menos una lista de contactos."
         )
+
+    # Validate scheduled datetime before creating the campaign
+    sched_utc = None
+    if action == "schedule":
+        sched_utc = _parse_quito_dt(scheduled_at)
+        if not sched_utc:
+            return _redirect_with_flash(
+                "/campaigns/new", "flash_error", "Fecha de programación inválida."
+            )
+        if sched_utc <= _utcnow():
+            return _redirect_with_flash(
+                "/campaigns/new", "flash_error", "La fecha programada debe ser en el futuro."
+            )
 
     # Count total contacts (unique by phone across lists)
     phones_seen: set[str] = set()
@@ -586,9 +635,10 @@ async def create_campaign(
     campaign = models.Campaign(
         name=name,
         message_template=message_template,
-        status="draft",
+        status="scheduled" if action == "schedule" else "draft",
         user_id=user.id,
         total_contacts=total,
+        scheduled_at=sched_utc,
     )
     db.add(campaign)
     db.flush()
@@ -600,6 +650,13 @@ async def create_campaign(
 
     if action == "send":
         return RedirectResponse(f"/campaigns/{campaign.id}/send", status_code=302)
+
+    if action == "schedule":
+        return _redirect_with_flash(
+            f"/campaigns/{campaign.id}",
+            "flash_success",
+            f"Campaña programada para el {scheduled_at.replace('T', ' ')} (hora Quito) 📅",
+        )
 
     return _redirect_with_flash(
         f"/campaigns/{campaign.id}",
@@ -631,11 +688,11 @@ async def edit_campaign_page(campaign_id: int, request: Request, db: Session = D
     campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
     if not campaign:
         raise HTTPException(status_code=404)
-    if campaign.status != "draft":
+    if campaign.status not in ("draft", "scheduled"):
         return _redirect_with_flash(
             f"/campaigns/{campaign_id}",
             "flash_error",
-            "Solo se pueden editar campañas en borrador.",
+            "Solo se pueden editar campañas en borrador o programadas.",
         )
     ctx = _base_ctx(request, db, active_page="campaigns")
     contact_lists = (
@@ -651,12 +708,22 @@ async def edit_campaign_page(campaign_id: int, request: Request, db: Session = D
                 extra_cols.update(c.extra_data.keys())
 
     selected_list_ids = {cl_link.list_id for cl_link in campaign.lists}
+    # Pre-fill scheduled_at in Quito time for the datetime-local input
+    scheduled_at_quito_str = ""
+    if campaign.scheduled_at:
+        scheduled_at_quito_str = (
+            campaign.scheduled_at.replace(tzinfo=timezone.utc)
+            .astimezone(QUITO_TZ)
+            .strftime("%Y-%m-%dT%H:%M")
+        )
     ctx.update(
         contact_lists=contact_lists,
         available_columns=sorted(extra_cols),
         campaign=campaign,
         selected_list_ids=selected_list_ids,
         editing=True,
+        now_quito_str=_now_quito_input_str(),
+        scheduled_at_quito_str=scheduled_at_quito_str,
     )
     return templates.TemplateResponse("campaign_new.html", ctx)
 
@@ -668,17 +735,18 @@ async def update_campaign(
     name: str = Form(...),
     message_template: str = Form(...),
     action: str = Form("save_draft"),
+    scheduled_at: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _require_user(request, db)
     campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
     if not campaign:
         raise HTTPException(status_code=404)
-    if campaign.status != "draft":
+    if campaign.status not in ("draft", "scheduled"):
         return _redirect_with_flash(
             f"/campaigns/{campaign_id}",
             "flash_error",
-            "Solo se pueden editar campañas en borrador.",
+            "Solo se pueden editar campañas en borrador o programadas.",
         )
 
     form_data = await request.form()
@@ -712,6 +780,35 @@ async def update_campaign(
                     total += 1
 
     campaign.total_contacts = total
+
+    if action == "schedule":
+        sched_utc = _parse_quito_dt(scheduled_at)
+        if not sched_utc:
+            db.rollback()
+            return _redirect_with_flash(
+                f"/campaigns/{campaign_id}/edit",
+                "flash_error",
+                "Fecha de programación inválida.",
+            )
+        if sched_utc <= _utcnow():
+            db.rollback()
+            return _redirect_with_flash(
+                f"/campaigns/{campaign_id}/edit",
+                "flash_error",
+                "La fecha programada debe ser en el futuro.",
+            )
+        campaign.scheduled_at = sched_utc
+        campaign.status = "scheduled"
+        db.commit()
+        return _redirect_with_flash(
+            f"/campaigns/{campaign.id}",
+            "flash_success",
+            f"Campaña programada para el {scheduled_at.replace('T', ' ')} (hora Quito) 📅",
+        )
+
+    # save_draft or send
+    campaign.scheduled_at = None
+    campaign.status = "draft"
     db.commit()
 
     if action == "send":
@@ -735,6 +832,25 @@ async def delete_campaign(campaign_id: int, request: Request, db: Session = Depe
     return _redirect_with_flash("/campaigns", "flash_success", "Campaña eliminada 🗑️")
 
 
+@app.post("/campaigns/{campaign_id}/unschedule")
+async def unschedule_campaign(campaign_id: int, request: Request, db: Session = Depends(get_db)):
+    user = _require_user(request, db)
+    campaign = db.query(models.Campaign).filter_by(id=campaign_id, user_id=user.id).first()
+    if not campaign:
+        raise HTTPException(status_code=404)
+    if campaign.status != "scheduled":
+        return _redirect_with_flash(
+            f"/campaigns/{campaign_id}", "flash_error", "La campaña no está programada."
+        )
+    campaign.status = "draft"
+    campaign.scheduled_at = None
+    db.commit()
+    return _redirect_with_flash(
+        f"/campaigns/{campaign_id}",
+        "flash_success",
+        "Programación cancelada. La campaña volvió a borrador 📝",
+    )
+
 @app.post("/campaigns/{campaign_id}/send")
 async def send_campaign(
     campaign_id: int,
@@ -748,6 +864,12 @@ async def send_campaign(
         raise HTTPException(status_code=404)
     if campaign.status == "sending":
         return RedirectResponse(f"/campaigns/{campaign_id}", status_code=302)
+    if campaign.status not in ("draft", "scheduled"):
+        return _redirect_with_flash(
+            f"/campaigns/{campaign_id}",
+            "flash_error",
+            "Solo se pueden enviar campañas en borrador o programadas.",
+        )
 
     settings = db.query(models.WAHASettings).filter_by(user_id=user.id).first()
     if not settings:

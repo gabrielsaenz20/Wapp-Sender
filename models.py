@@ -67,10 +67,11 @@ class Campaign(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), nullable=False)
     message_template = Column(Text, nullable=False)
-    status = Column(String(20), default="draft")  # draft, sending, completed, failed
+    status = Column(String(20), default="draft")  # draft, scheduled, sending, completed, failed
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=_utcnow)
     sent_at = Column(DateTime, nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)
     total_contacts = Column(Integer, default=0)
     sent_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)

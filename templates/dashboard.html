@@ -91,6 +91,7 @@
                 <td>
                   <span class="badge badge-{{ c.status }} text-white">
                     {% if c.status == 'draft' %}📝 Borrador
+                    {% elif c.status == 'scheduled' %}📅 Programada
                     {% elif c.status == 'sending' %}⏳ Enviando
                     {% elif c.status == 'completed' %}✅ Completada
                     {% elif c.status == 'failed' %}❌ Error
@@ -101,7 +102,7 @@
                   <span class="text-success fw-semibold">{{ c.sent_count }}</span>
                   <span class="text-muted">/ {{ c.total_contacts }}</span>
                 </td>
-                <td class="text-muted small">{{ c.created_at.strftime('%d/%m/%Y') }}</td>
+                <td class="text-muted small">{{ c.created_at | quito_fmt("%d/%m/%Y") }}</td>
               </tr>
               {% endfor %}
             </tbody>

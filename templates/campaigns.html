@@ -36,6 +36,7 @@
             <td>
               <span class="badge badge-{{ c.status }} text-white">
                 {% if c.status == 'draft' %}📝 Borrador
+                {% elif c.status == 'scheduled' %}📅 Programada
                 {% elif c.status == 'sending' %}⏳ Enviando
                 {% elif c.status == 'completed' %}✅ Completada
                 {% elif c.status == 'failed' %}❌ Error
@@ -45,7 +46,13 @@
             <td class="text-muted">{{ c.total_contacts }}</td>
             <td><span class="text-success fw-semibold">{{ c.sent_count }}</span></td>
             <td><span class="text-danger">{{ c.failed_count }}</span></td>
-            <td class="text-muted small">{{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td class="text-muted small">
+              {% if c.status == 'scheduled' and c.scheduled_at %}
+                <span class="text-primary">📅 {{ c.scheduled_at | quito_fmt }}</span>
+              {% else %}
+                {{ c.created_at | quito_fmt }}
+              {% endif %}
+            </td>
             <td>
               <a href="/campaigns/{{ c.id }}" class="btn btn-sm btn-outline-secondary me-1" style="border-radius:8px;">👁️ Ver</a>
               {% if c.status == 'draft' %}

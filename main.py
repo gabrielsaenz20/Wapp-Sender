@@ -191,6 +191,89 @@ finally:
     _startup_db.close()
 
 
+# ---------------------------------------------------------------------------
+# Scheduler loop – fires scheduled campaigns automatically
+# ---------------------------------------------------------------------------
+
+SCHEDULER_INTERVAL = float(os.getenv("SCHEDULER_INTERVAL", "30"))
+
+
+async def _scheduler_loop():
+    """Background loop that checks for scheduled campaigns every SCHEDULER_INTERVAL seconds."""
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                now = _utcnow()
+                due_campaigns = (
+                    db.query(models.Campaign)
+                    .filter(
+                        models.Campaign.status == "scheduled",
+                        models.Campaign.scheduled_at <= now,
+                    )
+                    .all()
+                )
+                for campaign in due_campaigns:
+                    settings = (
+                        db.query(models.WAHASettings)
+                        .filter_by(user_id=campaign.user_id)
+                        .first()
+                    )
+                    if not settings:
+                        logger.warning(
+                            "Scheduled campaign %d has no WAHA settings – skipping.", campaign.id
+                        )
+                        continue
+
+                    client = _get_waha_client(settings)
+                    campaign.status = "sending"
+                    campaign.sent_at = _utcnow()
+
+                    # Collect unique contacts (by phone) across all campaign lists
+                    seen_phones: set[str] = set()
+                    contacts_to_send: list[models.Contact] = []
+                    for cl_link in campaign.lists:
+                        for contact in cl_link.contact_list.contacts:
+                            if contact.phone not in seen_phones:
+                                seen_phones.add(contact.phone)
+                                contacts_to_send.append(contact)
+
+                    campaign.total_contacts = len(contacts_to_send)
+                    db.commit()
+
+                    # Create pending log entries
+                    log_ids = []
+                    for contact in contacts_to_send:
+                        log = models.MessageLog(
+                            campaign_id=campaign.id,
+                            contact_id=contact.id,
+                            phone=contact.phone,
+                            contact_name=contact.name,
+                            message=_render_message(campaign.message_template, contact),
+                            status="pending",
+                        )
+                        db.add(log)
+                        db.flush()
+                        log_ids.append(log.id)
+                    db.commit()
+
+                    # Fire off message sending as a background task
+                    asyncio.create_task(
+                        _send_campaign_messages(campaign.id, log_ids, client)
+                    )
+                    logger.info(
+                        "Scheduler: fired campaign %d ('%s') with %d contacts.",
+                        campaign.id,
+                        campaign.name,
+                        len(contacts_to_send),
+                    )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Error in scheduler loop")
+        await asyncio.sleep(SCHEDULER_INTERVAL)
+
+
 @app.on_event("startup")
 async def on_startup():
     """Called by uvicorn on startup – ensure admin user exists and start scheduler."""

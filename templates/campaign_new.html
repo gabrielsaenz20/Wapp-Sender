@@ -169,6 +169,28 @@
               🚀 Enviar Ahora
             </button>
           </div>
+
+          <hr class="my-3" />
+
+          <!-- Scheduling section -->
+          <div>
+            <label class="form-label fw-semibold small">📅 Programar envío automático</label>
+            <p class="text-muted" style="font-size:0.8rem;">Hora de Quito, Ecuador (UTC−5)</p>
+            <input
+              type="datetime-local"
+              class="form-control mb-2"
+              name="scheduled_at"
+              id="scheduledAt"
+              min="{{ now_quito_str }}"
+              value="{{ scheduled_at_quito_str if editing and scheduled_at_quito_str else '' }}"
+              style="border-radius:10px;"
+            />
+            <div class="d-grid">
+              <button type="submit" name="action" value="schedule" class="btn btn-outline-primary" style="border-radius:10px;" id="scheduleBtn">
+                📅 Programar Campaña
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -444,9 +466,19 @@ updatePreview();
 // Send button loading state
 document.getElementById('campaignForm').addEventListener('submit', function(e) {
   const sendBtn = document.getElementById('sendBtn');
+  const scheduleBtn = document.getElementById('scheduleBtn');
   if (e.submitter && e.submitter.value === 'send') {
     sendBtn.disabled = true;
     sendBtn.textContent = '⏳ Enviando...';
+  } else if (e.submitter && e.submitter.value === 'schedule') {
+    const scheduledAt = document.getElementById('scheduledAt').value;
+    if (!scheduledAt) {
+      e.preventDefault();
+      alert('Por favor selecciona una fecha y hora para programar la campaña.');
+      return;
+    }
+    scheduleBtn.disabled = true;
+    scheduleBtn.textContent = '⏳ Programando...';
   }
 });
 </script>

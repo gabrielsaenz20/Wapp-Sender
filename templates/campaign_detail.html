@@ -15,6 +15,7 @@
       <h5 class="fw-bold mb-0">{{ campaign.name }}</h5>
       <span class="badge badge-{{ campaign.status }} text-white">
         {% if campaign.status == 'draft' %}📝 Borrador
+        {% elif campaign.status == 'scheduled' %}📅 Programada
         {% elif campaign.status == 'sending' %}⏳ Enviando
         {% elif campaign.status == 'completed' %}✅ Completada
         {% elif campaign.status == 'failed' %}❌ Error
@@ -27,6 +28,22 @@
     <a href="/campaigns/{{ campaign.id }}/edit" class="btn btn-outline-secondary" style="border-radius:10px;">
       ✏️ Editar
     </a>
+    <form method="post" action="/campaigns/{{ campaign.id }}/send" id="sendForm">
+      <button type="submit" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendNowBtn">
+        🚀 Enviar Ahora
+      </button>
+    </form>
+  </div>
+  {% elif campaign.status == 'scheduled' %}
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="/campaigns/{{ campaign.id }}/edit" class="btn btn-outline-secondary" style="border-radius:10px;">
+      ✏️ Editar
+    </a>
+    <form method="post" action="/campaigns/{{ campaign.id }}/unschedule">
+      <button type="submit" class="btn btn-outline-warning" style="border-radius:10px;">
+        🗓️ Cancelar programación
+      </button>
+    </form>
     <form method="post" action="/campaigns/{{ campaign.id }}/send" id="sendForm">
       <button type="submit" class="btn btn-wapp btn-lg" style="border-radius:10px; font-weight:600;" id="sendNowBtn">
         🚀 Enviar Ahora
@@ -71,6 +88,12 @@
           <span>Campaña en proceso de envío... Esta página se actualizará automáticamente.</span>
         </div>
         {% endif %}
+        {% if campaign.status == 'scheduled' and campaign.scheduled_at %}
+        <div class="alert alert-info d-flex align-items-center gap-2 mt-3 mb-0" style="border-radius:10px;">
+          <span>📅</span>
+          <span>Programada para enviarse el <strong>{{ campaign.scheduled_at | quito_fmt }}</strong> (hora Quito).</span>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -111,7 +134,7 @@
                   {% endif %}
                 </td>
                 <td class="text-muted small">
-                  {% if log.sent_at %}{{ log.sent_at.strftime('%H:%M:%S') }}{% else %}–{% endif %}
+                  {% if log.sent_at %}{{ log.sent_at | quito_fmt("%H:%M:%S") }}{% else %}–{% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -134,10 +157,14 @@
       <div class="card-body">
         <dl class="row mb-0">
           <dt class="col-5 text-muted small">Creada</dt>
-          <dd class="col-7 small">{{ campaign.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          <dd class="col-7 small">{{ campaign.created_at | quito_fmt }}</dd>
+          {% if campaign.scheduled_at %}
+          <dt class="col-5 text-muted small">📅 Programada</dt>
+          <dd class="col-7 small text-primary fw-semibold">{{ campaign.scheduled_at | quito_fmt }}</dd>
+          {% endif %}
           {% if campaign.sent_at %}
           <dt class="col-5 text-muted small">Enviada</dt>
-          <dd class="col-7 small">{{ campaign.sent_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+          <dd class="col-7 small">{{ campaign.sent_at | quito_fmt }}</dd>
           {% endif %}
           <dt class="col-5 text-muted small">Listas</dt>
           <dd class="col-7 small">

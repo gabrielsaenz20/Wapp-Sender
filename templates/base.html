@@ -339,9 +339,15 @@
       <h6 class="mb-0 fw-semibold text-muted">{% block page_title %}{% endblock %}</h6>
     </div>
     <div class="d-flex align-items-center gap-3">
+      <!-- Live Quito clock -->
+      <span id="app-clock"
+            class="text-muted d-none d-sm-inline"
+            style="font-size:0.82rem; font-variant-numeric: tabular-nums; letter-spacing:0.2px;">
+        --:--:-- &nbsp; --/--/----
+      </span>
       <div class="dropdown">
         <button class="btn btn-sm btn-light dropdown-toggle d-flex align-items-center gap-1 px-3"
-                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                type="button" id="userDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false"
                 style="border-radius:20px; font-size:0.88rem; border:1px solid #dee2e6;">
           👤 {{ current_user.username }}
         </button>
@@ -433,6 +439,18 @@
     if (window.bootstrap && window.bootstrap.Modal) return;
 
     document.addEventListener('click', function (e) {
+    // Open dropdown via data-bs-toggle
+      var dropdownTrigger = e.target.closest('[data-bs-toggle="dropdown"]');
+      if (dropdownTrigger) {
+        var menu = dropdownTrigger.nextElementSibling;
+        if (menu && menu.classList.contains('dropdown-menu')) {
+          var isShown = menu.classList.contains('show');
+          document.querySelectorAll('.dropdown-menu.show').forEach(function (m) { m.classList.remove('show'); });
+          if (!isShown) { menu.classList.add('show'); }
+          e.stopPropagation();
+          return;
+        }
+      }
       // Open modal via data-bs-toggle
       var trigger = e.target.closest('[data-bs-toggle="modal"]');
       if (trigger) {
@@ -442,6 +460,10 @@
       // Close modal via dismiss button or backdrop click
       if (e.target.closest('[data-bs-dismiss="modal"]') || e.target.id === '__fb_bd__') {
         hideModals();
+      }
+      // Close any open dropdowns when clicking outside
+      if (!e.target.closest('.dropdown')) {
+        document.querySelectorAll('.dropdown-menu.show').forEach(function (m) { m.classList.remove('show'); });
       }
     });
 
@@ -455,6 +477,28 @@
   } else {
     attachFallbackListeners();
   }
+})();
+</script>
+<!-- Live Quito clock -->
+<script>
+(function () {
+  var fmt = new Intl.DateTimeFormat('es-EC', {
+    timeZone: 'America/Guayaquil',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  });
+  function tick() {
+    var el = document.getElementById('app-clock');
+    if (!el) return;
+    var parts = fmt.formatToParts(new Date());
+    var p = {};
+    parts.forEach(function (x) { p[x.type] = x.value; });
+    el.textContent = (p.hour || '--') + ':' + (p.minute || '--') + ':' + (p.second || '--')
+                   + '\u00a0\u00a0' + (p.day || '--') + '/' + (p.month || '--') + '/' + (p.year || '----');
+  }
+  tick();
+  setInterval(tick, 1000);
 })();
 </script>
 {% block extra_scripts %}{% endblock %}

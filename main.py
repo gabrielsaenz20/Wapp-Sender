@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional
@@ -65,6 +66,33 @@ templates.env.filters["quito_fmt"] = _quito_fmt
 Base.metadata.create_all(bind=engine)
 
 
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_identifier(name: str) -> str:
+    """Return *name* double-quoted for use in DDL, after validating it is a
+    plain alphanumeric/underscore identifier (no spaces, no special chars).
+    This prevents accidental SQL injection from unexpected metadata values.
+    """
+    if not _SAFE_IDENTIFIER_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier rejected: {name!r}")
+    return f'"{name}"'
+
+
+def _sql_default(value) -> str:
+    """Convert a Python scalar ORM default value to its SQL literal form."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    # For strings, use single-quoted SQL literals with internal single-quotes escaped.
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def _migrate_db() -> None:
     """Add any columns that exist in the ORM models but are missing from the DB.
 
@@ -82,24 +110,23 @@ def _migrate_db() -> None:
             if table.name not in existing_tables:
                 # Table doesn't exist yet; create_all will handle it.
                 continue
-            rows = conn.execute(sa_text(f"PRAGMA table_info({table.name})")).fetchall()
+            tbl = _safe_identifier(table.name)
+            rows = conn.execute(sa_text(f"PRAGMA table_info({tbl})")).fetchall()
             existing_columns = {row[1] for row in rows}  # column name is index 1
             for column in table.columns:
                 if column.primary_key or column.name in existing_columns:
                     continue
+                col = _safe_identifier(column.name)
                 col_type = column.type.compile(engine.dialect)
                 # SQLite only allows adding nullable columns (or columns with a default)
                 # via ALTER TABLE.  Use NULL default for nullable columns with no default.
                 if column.default is not None and column.default.is_scalar:
-                    default_clause = f" DEFAULT {column.default.arg!r}"
+                    default_clause = f" DEFAULT {_sql_default(column.default.arg)}"
                 elif column.nullable:
                     default_clause = " DEFAULT NULL"
                 else:
                     default_clause = ""
-                ddl = (
-                    f"ALTER TABLE {table.name} ADD COLUMN "
-                    f"{column.name} {col_type}{default_clause}"
-                )
+                ddl = f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}{default_clause}"
                 conn.execute(sa_text(ddl))
                 logger.info("DB migration: added column %s.%s", table.name, column.name)
         conn.commit()

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Wapp Sender{% endblock %}
+{% block page_title %}🏠 Dashboard{% endblock %}
+
+{% block content %}
+<!-- Welcome banner -->
+<div class="card mb-4" style="background: linear-gradient(135deg, #075E54, #25D366); color:#fff; border-radius:16px;">
+  <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-3" style="padding:1.5rem 2rem;">
+    <div>
+      <h4 class="fw-bold mb-1">¡Hola, {{ current_user.username }}! 👋</h4>
+      <p class="mb-0 opacity-75">Listo para enviar tus mensajes de hoy.</p>
+    </div>
+    <a href="/campaigns/new" class="btn btn-light fw-semibold" style="border-radius:10px;">
+      ✉️ Nueva Campaña
+    </a>
+  </div>
+</div>
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-value">{{ stats.total_lists }}</div>
+          <div class="stat-label">Listas de Contactos</div>
+        </div>
+        <div class="stat-icon">👥</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card" style="background: linear-gradient(135deg, #f093fb, #f5576c);">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-value">{{ stats.total_contacts }}</div>
+          <div class="stat-label">Contactos Totales</div>
+        </div>
+        <div class="stat-icon">📋</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-value">{{ stats.total_campaigns }}</div>
+          <div class="stat-label">Campañas Creadas</div>
+        </div>
+        <div class="stat-icon">📢</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-value">{{ stats.messages_sent }}</div>
+          <div class="stat-label">Mensajes Enviados</div>
+        </div>
+        <div class="stat-icon">✅</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Recent campaigns -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between py-3 px-4">
+        <span>📢 Campañas Recientes</span>
+        <a href="/campaigns" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">Ver todas</a>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_campaigns %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th class="px-4">Campaña</th>
+                <th>Estado</th>
+                <th>Enviados</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in recent_campaigns %}
+              <tr style="cursor:pointer;" onclick="window.location='/campaigns/{{ c.id }}'">
+                <td class="px-4 fw-semibold">{{ c.name }}</td>
+                <td>
+                  <span class="badge badge-{{ c.status }} text-white">
+                    {% if c.status == 'draft' %}📝 Borrador
+                    {% elif c.status == 'sending' %}⏳ Enviando
+                    {% elif c.status == 'completed' %}✅ Completada
+                    {% elif c.status == 'failed' %}❌ Error
+                    {% else %}{{ c.status }}{% endif %}
+                  </span>
+                </td>
+                <td>
+                  <span class="text-success fw-semibold">{{ c.sent_count }}</span>
+                  <span class="text-muted">/ {{ c.total_contacts }}</span>
+                </td>
+                <td class="text-muted small">{{ c.created_at.strftime('%d/%m/%Y') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+          <div style="font-size:3rem;">📭</div>
+          <p class="mt-2">Aún no tienes campañas.<br>
+          <a href="/campaigns/new" class="btn btn-sm btn-wapp mt-2">✉️ Crear primera campaña</a></p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- WhatsApp status + quick actions -->
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header py-3 px-4">📱 Estado de WhatsApp</div>
+      <div class="card-body">
+        {% if wa_status %}
+          {% if wa_status.status == 'WORKING' %}
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="status-dot connected"></span>
+            <span class="fw-semibold text-success">Conectado</span>
+          </div>
+          {% if wa_status.me %}
+          <p class="mb-1 small text-muted">Cuenta: <strong>{{ wa_status.me.get('pushName', 'N/A') }}</strong></p>
+          <p class="mb-0 small text-muted">Número: <strong>{{ wa_status.me.get('id', {}).get('user', 'N/A') if wa_status.me.get('id') is mapping else wa_status.me.get('id', 'N/A') }}</strong></p>
+          {% endif %}
+          {% elif wa_status.status == 'SCAN_QR_CODE' %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="status-dot connecting"></span>
+            <span class="fw-semibold text-warning">Esperando QR</span>
+          </div>
+          <a href="/settings" class="btn btn-sm btn-wapp">📷 Escanear QR</a>
+          {% else %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="status-dot disconnected"></span>
+            <span class="fw-semibold text-danger">Desconectado</span>
+          </div>
+          <a href="/settings" class="btn btn-sm btn-outline-wapp">⚙️ Configurar</a>
+          {% endif %}
+        {% else %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="status-dot disconnected"></span>
+          <span class="text-muted">No configurado</span>
+        </div>
+        <a href="/settings" class="btn btn-sm btn-wapp">⚙️ Configurar WAHA</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header py-3 px-4">⚡ Acciones Rápidas</div>
+      <div class="card-body d-flex flex-column gap-2">
+        <a href="/contacts" class="btn btn-outline-secondary text-start" style="border-radius:10px;">
+          👥 Gestionar Listas de Contactos
+        </a>
+        <a href="/campaigns/new" class="btn btn-wapp text-start" style="border-radius:10px;">
+          ✉️ Crear Nueva Campaña
+        </a>
+        <a href="/settings" class="btn btn-outline-secondary text-start" style="border-radius:10px;">
+          ⚙️ Configuración de WhatsApp
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

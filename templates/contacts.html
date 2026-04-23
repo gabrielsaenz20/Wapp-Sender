@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Listas de Contactos – Wapp Sender{% endblock %}
+{% block page_title %}👥 Listas de Contactos{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h5 class="fw-bold mb-0">👥 Mis Listas de Contactos</h5>
+    <small class="text-muted">Organiza y gestiona tus listas de contactos para WhatsApp</small>
+  </div>
+  <button class="btn btn-wapp" data-bs-toggle="modal" data-bs-target="#newListModal" style="border-radius:10px;">
+    ➕ Nueva Lista
+  </button>
+</div>
+
+{% if contact_lists %}
+<div class="row g-3">
+  {% for cl in contact_lists %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card h-100" style="border-radius:14px; transition:transform .2s, box-shadow .2s;" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 25px rgba(0,0,0,0.12)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <div style="background:#e8f5e9; border-radius:10px; width:42px; height:42px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">👥</div>
+            <div>
+              <h6 class="fw-bold mb-0">{{ cl.name }}</h6>
+              <small class="text-muted">{{ cl.contacts|length }} contacto{{ 's' if cl.contacts|length != 1 }}</small>
+            </div>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-light" data-bs-toggle="dropdown" style="border-radius:8px;">⋯</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="/contacts/{{ cl.id }}">👁️ Ver detalles</a></li>
+              <li>
+                <button class="dropdown-item" onclick="openImportModal({{ cl.id }}, '{{ cl.name }}')">
+                  📥 Importar Excel
+                </button>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <button class="dropdown-item text-danger" onclick="confirmDelete({{ cl.id }}, '{{ cl.name }}')">
+                  🗑️ Eliminar lista
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        {% if cl.description %}
+        <p class="text-muted small mb-3">{{ cl.description }}</p>
+        {% endif %}
+        <div class="d-flex gap-2 mt-auto">
+          <a href="/contacts/{{ cl.id }}" class="btn btn-sm btn-outline-secondary flex-fill" style="border-radius:8px;">
+            👁️ Ver
+          </a>
+          <button class="btn btn-sm btn-outline-wapp flex-fill" onclick="openImportModal({{ cl.id }}, '{{ cl.name }}')" style="border-radius:8px;">
+            📥 Importar
+          </button>
+        </div>
+      </div>
+      <div class="card-footer text-muted small" style="background:transparent; border-top: 1px solid #f0f2f5;">
+        📅 Creada el {{ cl.created_at.strftime('%d/%m/%Y') }}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="border-radius:16px;">
+  <div class="card-body text-center py-5">
+    <div style="font-size:4rem; margin-bottom:1rem;">📭</div>
+    <h5 class="fw-bold">Aún no tienes listas de contactos</h5>
+    <p class="text-muted">Crea tu primera lista para comenzar a enviar mensajes.</p>
+    <button class="btn btn-wapp px-4" data-bs-toggle="modal" data-bs-target="#newListModal" style="border-radius:10px;">
+      ➕ Crear Primera Lista
+    </button>
+  </div>
+</div>
+{% endif %}
+
+<!-- New List Modal -->
+<div class="modal fade" id="newListModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">➕ Nueva Lista de Contactos</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/contacts">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📝 Nombre de la lista</label>
+            <input type="text" class="form-control" name="name" placeholder="Ej: Clientes VIP, Evento Navidad..." required style="border-radius:10px;" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📄 Descripción (opcional)</label>
+            <textarea class="form-control" name="description" rows="2" placeholder="Describe esta lista..." style="border-radius:10px;"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius:10px;">Cancelar</button>
+          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">✅ Crear Lista</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Import Excel Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">📥 Importar desde Excel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="importForm" enctype="multipart/form-data">
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            ℹ️ Lista seleccionada: <strong id="importListName"></strong>
+          </p>
+          <div class="alert alert-info d-flex gap-2 align-items-start" style="border-radius:10px; font-size:0.85rem;">
+            <span>📋</span>
+            <div>
+              Tu archivo Excel debe tener las columnas:<br>
+              <strong>name</strong> (o nombre) y <strong>phone</strong> (o telefono/celular).<br>
+              Cualquier otra columna estará disponible como <strong>placeholder</strong> en los mensajes.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">📎 Archivo Excel (.xlsx, .xls)</label>
+            <input type="file" class="form-control" name="file" accept=".xlsx,.xls" required style="border-radius:10px;" />
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="replace" id="replaceCheck" value="1" />
+            <label class="form-check-label" for="replaceCheck">
+              🔄 Reemplazar contactos existentes (si no, agrega al final)
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius:10px;">Cancelar</button>
+          <button type="submit" class="btn btn-wapp" style="border-radius:10px;">📥 Importar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-body text-center py-4">
+        <div style="font-size:3rem;">⚠️</div>
+        <h5 class="fw-bold mt-2">¿Eliminar lista?</h5>
+        <p class="text-muted small">Se eliminará "<strong id="deleteListName"></strong>" y todos sus contactos. Esta acción no se puede deshacer.</p>
+        <form method="post" id="deleteForm">
+          <input type="hidden" name="_method" value="DELETE" />
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius:10px;">Cancelar</button>
+            <button type="submit" class="btn btn-danger" style="border-radius:10px;">🗑️ Eliminar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openImportModal(listId, listName) {
+  document.getElementById('importListName').textContent = listName;
+  document.getElementById('importForm').action = '/contacts/' + listId + '/import';
+  window.__bsShowModal(document.getElementById('importModal'));
+}
+
+function confirmDelete(listId, listName) {
+  document.getElementById('deleteListName').textContent = listName;
+  document.getElementById('deleteForm').action = '/contacts/' + listId + '/delete';
+  window.__bsShowModal(document.getElementById('deleteModal'));
+}
+</script>
+{% endblock %}

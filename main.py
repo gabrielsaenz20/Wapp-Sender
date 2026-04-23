@@ -65,6 +65,49 @@ templates.env.filters["quito_fmt"] = _quito_fmt
 Base.metadata.create_all(bind=engine)
 
 
+def _migrate_db() -> None:
+    """Add any columns that exist in the ORM models but are missing from the DB.
+
+    SQLAlchemy's create_all only creates new tables; it never alters existing
+    ones.  This function handles forward-only schema evolution for SQLite by
+    introspecting each table with PRAGMA table_info and issuing
+    ALTER TABLE … ADD COLUMN for any missing column.
+    """
+    from sqlalchemy import inspect, text as sa_text
+
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                # Table doesn't exist yet; create_all will handle it.
+                continue
+            rows = conn.execute(sa_text(f"PRAGMA table_info({table.name})")).fetchall()
+            existing_columns = {row[1] for row in rows}  # column name is index 1
+            for column in table.columns:
+                if column.primary_key or column.name in existing_columns:
+                    continue
+                col_type = column.type.compile(engine.dialect)
+                # SQLite only allows adding nullable columns (or columns with a default)
+                # via ALTER TABLE.  Use NULL default for nullable columns with no default.
+                if column.default is not None and column.default.is_scalar:
+                    default_clause = f" DEFAULT {column.default.arg!r}"
+                elif column.nullable:
+                    default_clause = " DEFAULT NULL"
+                else:
+                    default_clause = ""
+                ddl = (
+                    f"ALTER TABLE {table.name} ADD COLUMN "
+                    f"{column.name} {col_type}{default_clause}"
+                )
+                conn.execute(sa_text(ddl))
+                logger.info("DB migration: added column %s.%s", table.name, column.name)
+        conn.commit()
+
+
+_migrate_db()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import base64
 import httpx
 import asyncio
+import random
 from typing import Optional
 
 
@@ -97,6 +98,142 @@ class WAHAClient:
             )
             r.raise_for_status()
             return r.json()
+
+    async def send_seen(self, phone: str) -> None:
+        """Send a read receipt (mark chat as seen) for a contact."""
+        chat_id = self._normalize_phone(phone)
+        async with httpx.AsyncClient(headers=self.headers, timeout=10) as client:
+            try:
+                r = await client.post(
+                    f"{self.base_url}/api/sendSeen",
+                    json={
+                        "chatId": chat_id,
+                        "session": self.session_name,
+                    }
+                )
+                # WAHA may return 404/422 if endpoint is unavailable in the
+                # installed plan – ignore failures so sending still proceeds.
+                if r.status_code not in (200, 201, 204):
+                    return
+            except Exception:
+                return
+
+    async def start_typing(self, phone: str) -> None:
+        """Start the typing indicator for a contact chat."""
+        chat_id = self._normalize_phone(phone)
+        async with httpx.AsyncClient(headers=self.headers, timeout=10) as client:
+            try:
+                r = await client.post(
+                    f"{self.base_url}/api/startTyping",
+                    json={
+                        "chatId": chat_id,
+                        "session": self.session_name,
+                    }
+                )
+                if r.status_code not in (200, 201, 204):
+                    return
+            except Exception:
+                return
+
+    async def stop_typing(self, phone: str) -> None:
+        """Stop the typing indicator for a contact chat."""
+        chat_id = self._normalize_phone(phone)
+        async with httpx.AsyncClient(headers=self.headers, timeout=10) as client:
+            try:
+                r = await client.post(
+                    f"{self.base_url}/api/stopTyping",
+                    json={
+                        "chatId": chat_id,
+                        "session": self.session_name,
+                    }
+                )
+                if r.status_code not in (200, 201, 204):
+                    return
+            except Exception:
+                return
+
+    async def send_text_humanized(
+        self,
+        phone: str,
+        message: str,
+        *,
+        min_delay: float = 5.0,
+        max_delay: float = 20.0,
+        typing_cpm: float = 200.0,
+        seen_probability: float = 0.85,
+        post_seen_min_delay: float = 0.5,
+        post_seen_max_delay: float = 2.5,
+        thinking_min_pause: float = 1.0,
+        thinking_max_pause: float = 4.0,
+        post_typing_min_pause: float = 0.3,
+        post_typing_max_pause: float = 1.2,
+        min_typing_seconds: float = 1.5,
+        max_typing_seconds: float = 25.0,
+    ) -> dict:
+        """Send a text message with human-like behaviour.
+
+        Sequence:
+          1. Random pre-message pause (simulates finishing reading the previous chat).
+          2. Optionally send a "seen" read receipt (controlled by *seen_probability*).
+          3. Short thinking pause before starting to type.
+          4. Start typing indicator.
+          5. Wait for a duration proportional to the message length at *typing_cpm*
+             characters per minute, with ±20 % jitter.
+          6. Stop typing (brief "reviewing what I wrote" pause).
+          7. Send the actual message.
+
+        All delays are randomised so that traffic patterns are not uniform and
+        therefore harder to fingerprint.
+
+        Args:
+            phone: Phone number in international format.
+            message: Text message to send.
+            min_delay: Minimum seconds to wait before starting the sequence.
+            max_delay: Maximum seconds to wait before starting the sequence.
+            typing_cpm: Characters-per-minute used to estimate typing duration.
+            seen_probability: Probability (0–1) of sending a read receipt first.
+            post_seen_min_delay: Min pause (s) after sending the read receipt.
+            post_seen_max_delay: Max pause (s) after sending the read receipt.
+            thinking_min_pause: Min "thinking" pause (s) before starting to type.
+            thinking_max_pause: Max "thinking" pause (s) before starting to type.
+            post_typing_min_pause: Min pause (s) after stopping the typing indicator.
+            post_typing_max_pause: Max pause (s) after stopping the typing indicator.
+            min_typing_seconds: Lower clamp (s) for the typing indicator duration.
+            max_typing_seconds: Upper clamp (s) for the typing indicator duration.
+        """
+        # 1. Pre-message pause – randomised between min_delay and max_delay.
+        pre_delay = random.uniform(min_delay, max_delay)
+        await asyncio.sleep(pre_delay)
+
+        # 2. Optionally mark the chat as "read" before replying.
+        if random.random() < seen_probability:
+            await self.send_seen(phone)
+            # Brief pause after reading, before starting to type.
+            await asyncio.sleep(random.uniform(post_seen_min_delay, post_seen_max_delay))
+
+        # 3. Short thinking pause (deciding what to write).
+        thinking_pause = random.uniform(thinking_min_pause, thinking_max_pause)
+        await asyncio.sleep(thinking_pause)
+
+        # 4. Start typing indicator.
+        await self.start_typing(phone)
+
+        # 5. Simulate typing duration based on message length.
+        #    typing_cpm is characters per minute; add ±20 % jitter.
+        char_count = max(len(message), 1)
+        base_typing_seconds = (char_count / typing_cpm) * 60.0
+        jitter = random.uniform(0.80, 1.20)
+        typing_duration = base_typing_seconds * jitter
+        # Clamp to a reasonable range so it never looks instant or suspiciously long.
+        typing_duration = max(min_typing_seconds, min(typing_duration, max_typing_seconds))
+        await asyncio.sleep(typing_duration)
+
+        # 6. Stop typing – micro-pause before hitting "send".
+        await self.stop_typing(phone)
+        await asyncio.sleep(random.uniform(post_typing_min_pause, post_typing_max_pause))
+
+        # 7. Send the actual message.
+        return await self.send_text(phone, message)
 
     def _normalize_phone(self, phone: str) -> str:
         """Normalize phone number to WhatsApp chat ID format."""

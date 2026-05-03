@@ -36,8 +36,28 @@ logger = logging.getLogger(__name__)
 # Quito, Ecuador timezone (UTC-5, no DST)
 QUITO_TZ = ZoneInfo("America/Guayaquil")
 
-# Delay in seconds between messages to respect WAHA / WhatsApp rate limits.
-# Increase if messages fail due to rate limiting. WAHA recommends at least 1s.
+# ---------------------------------------------------------------------------
+# Human-simulation settings for outgoing messages
+# ---------------------------------------------------------------------------
+
+# When HUMAN_SIMULATE=true (default), each message is preceded by a read
+# receipt, a typing indicator whose duration matches the message length, and
+# randomised inter-message delays – making the traffic pattern indistinguishable
+# from a real user typing on their phone.
+HUMAN_SIMULATE = os.getenv("HUMAN_SIMULATE", "true").lower() in ("1", "true", "yes")
+
+# Random delay range (seconds) between consecutive messages.
+MESSAGE_MIN_DELAY = float(os.getenv("MESSAGE_MIN_DELAY", "5.0"))
+MESSAGE_MAX_DELAY = float(os.getenv("MESSAGE_MAX_DELAY", "20.0"))
+
+# Typing speed used to compute how long the "typing…" indicator is shown.
+# 200 CPM (≈ 40 WPM) is a comfortable, realistic average for mobile typing.
+TYPING_CPM = float(os.getenv("TYPING_CPM", "200.0"))
+
+# Probability (0.0–1.0) that a "seen" read receipt is sent before typing.
+SEEN_PROBABILITY = float(os.getenv("SEEN_PROBABILITY", "0.85"))
+
+# Legacy single-value delay kept for backward-compat when HUMAN_SIMULATE=false.
 MESSAGE_SEND_DELAY = float(os.getenv("MESSAGE_SEND_DELAY", "1.0"))
 
 # ---------------------------------------------------------------------------
@@ -1072,7 +1092,16 @@ async def send_campaign(
 
 
 async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: WAHAClient):
-    """Background task to send campaign messages one by one."""
+    """Background task to send campaign messages one by one.
+
+    When HUMAN_SIMULATE is enabled (default), each message is sent via
+    ``WAHAClient.send_text_humanized`` which mimics real human behaviour:
+    read receipt → thinking pause → typing indicator → send.  Inter-message
+    delays are randomised within [MESSAGE_MIN_DELAY, MESSAGE_MAX_DELAY].
+
+    When HUMAN_SIMULATE is disabled the legacy fixed MESSAGE_SEND_DELAY is
+    used with a plain ``send_text`` call.
+    """
     db = SessionLocal()
     try:
         campaign = db.query(models.Campaign).filter_by(id=campaign_id).first()
@@ -1086,7 +1115,19 @@ async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: 
             if not log:
                 continue
             try:
-                await client.send_text(log.phone, log.message)
+                if HUMAN_SIMULATE:
+                    # send_text_humanized handles all delays internally
+                    # (pre-message pause, seen, typing, post-typing pause).
+                    await client.send_text_humanized(
+                        log.phone,
+                        log.message,
+                        min_delay=MESSAGE_MIN_DELAY,
+                        max_delay=MESSAGE_MAX_DELAY,
+                        typing_cpm=TYPING_CPM,
+                        seen_probability=SEEN_PROBABILITY,
+                    )
+                else:
+                    await client.send_text(log.phone, log.message)
                 log.status = "sent"
                 log.sent_at = _utcnow()
                 sent += 1
@@ -1095,9 +1136,10 @@ async def _send_campaign_messages(campaign_id: int, log_ids: list[int], client: 
                 log.error_message = str(e)[:500]
                 failed += 1
             db.commit()
-            # Rate limiting: WAHA recommends >= 1s between messages to avoid bans.
-            # Configurable via MESSAGE_SEND_DELAY environment variable.
-            await asyncio.sleep(MESSAGE_SEND_DELAY)
+            if not HUMAN_SIMULATE:
+                # Human-simulate mode already includes inter-message delay;
+                # in legacy mode apply the fixed delay here.
+                await asyncio.sleep(MESSAGE_SEND_DELAY)
 
         campaign.sent_count = sent
         campaign.failed_count = failed

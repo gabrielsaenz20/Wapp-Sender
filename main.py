@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Optional
@@ -63,6 +64,75 @@ templates.env.filters["quito_fmt"] = _quito_fmt
 
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
+
+
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_identifier(name: str) -> str:
+    """Return *name* double-quoted for use in DDL, after validating it is a
+    plain alphanumeric/underscore identifier (no spaces, no special chars).
+    This prevents accidental SQL injection from unexpected metadata values.
+    """
+    if not _SAFE_IDENTIFIER_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier rejected: {name!r}")
+    return f'"{name}"'
+
+
+def _sql_default(value) -> str:
+    """Convert a Python scalar ORM default value to its SQL literal form."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    # For strings, use single-quoted SQL literals with internal single-quotes escaped.
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _migrate_db() -> None:
+    """Add any columns that exist in the ORM models but are missing from the DB.
+
+    SQLAlchemy's create_all only creates new tables; it never alters existing
+    ones.  This function handles forward-only schema evolution for SQLite by
+    introspecting each table with PRAGMA table_info and issuing
+    ALTER TABLE … ADD COLUMN for any missing column.
+    """
+    from sqlalchemy import inspect, text as sa_text
+
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                # Table doesn't exist yet; create_all will handle it.
+                continue
+            tbl = _safe_identifier(table.name)
+            rows = conn.execute(sa_text(f"PRAGMA table_info({tbl})")).fetchall()
+            existing_columns = {row[1] for row in rows}  # column name is index 1
+            for column in table.columns:
+                if column.primary_key or column.name in existing_columns:
+                    continue
+                col = _safe_identifier(column.name)
+                col_type = column.type.compile(engine.dialect)
+                # SQLite only allows adding nullable columns (or columns with a default)
+                # via ALTER TABLE.  Use NULL default for nullable columns with no default.
+                if column.default is not None and column.default.is_scalar:
+                    default_clause = f" DEFAULT {_sql_default(column.default.arg)}"
+                elif column.nullable:
+                    default_clause = " DEFAULT NULL"
+                else:
+                    default_clause = ""
+                ddl = f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type}{default_clause}"
+                conn.execute(sa_text(ddl))
+                logger.info("DB migration: added column %s.%s", table.name, column.name)
+        conn.commit()
+
+
+_migrate_db()
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +259,89 @@ try:
     _ensure_admin(_startup_db)
 finally:
     _startup_db.close()
+
+
+# ---------------------------------------------------------------------------
+# Scheduler loop – fires scheduled campaigns automatically
+# ---------------------------------------------------------------------------
+
+SCHEDULER_INTERVAL = float(os.getenv("SCHEDULER_INTERVAL", "30"))
+
+
+async def _scheduler_loop():
+    """Background loop that checks for scheduled campaigns every SCHEDULER_INTERVAL seconds."""
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                now = _utcnow()
+                due_campaigns = (
+                    db.query(models.Campaign)
+                    .filter(
+                        models.Campaign.status == "scheduled",
+                        models.Campaign.scheduled_at <= now,
+                    )
+                    .all()
+                )
+                for campaign in due_campaigns:
+                    settings = (
+                        db.query(models.WAHASettings)
+                        .filter_by(user_id=campaign.user_id)
+                        .first()
+                    )
+                    if not settings:
+                        logger.warning(
+                            "Scheduled campaign %d has no WAHA settings – skipping.", campaign.id
+                        )
+                        continue
+
+                    client = _get_waha_client(settings)
+                    campaign.status = "sending"
+                    campaign.sent_at = _utcnow()
+
+                    # Collect unique contacts (by phone) across all campaign lists
+                    seen_phones: set[str] = set()
+                    contacts_to_send: list[models.Contact] = []
+                    for cl_link in campaign.lists:
+                        for contact in cl_link.contact_list.contacts:
+                            if contact.phone not in seen_phones:
+                                seen_phones.add(contact.phone)
+                                contacts_to_send.append(contact)
+
+                    campaign.total_contacts = len(contacts_to_send)
+                    db.commit()
+
+                    # Create pending log entries
+                    log_ids = []
+                    for contact in contacts_to_send:
+                        log = models.MessageLog(
+                            campaign_id=campaign.id,
+                            contact_id=contact.id,
+                            phone=contact.phone,
+                            contact_name=contact.name,
+                            message=_render_message(campaign.message_template, contact),
+                            status="pending",
+                        )
+                        db.add(log)
+                        db.flush()
+                        log_ids.append(log.id)
+                    db.commit()
+
+                    # Fire off message sending as a background task
+                    asyncio.create_task(
+                        _send_campaign_messages(campaign.id, log_ids, client)
+                    )
+                    logger.info(
+                        "Scheduler: fired campaign %d ('%s') with %d contacts.",
+                        campaign.id,
+                        campaign.name,
+                        len(contacts_to_send),
+                    )
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Error in scheduler loop")
+        await asyncio.sleep(SCHEDULER_INTERVAL)
 
 
 @app.on_event("startup")
